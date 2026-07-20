@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8" />
+  <title>ccCraft</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <div class="title">ccCraft</div>
+    <div class="sub">AI-crafted subtitles for YouTube</div>
+  </header>
+
+  <div id="status"></div>
+
+  <section class="step">
+    <div class="stepTitle">Translate</div>
+
+    <label for="targetLangSelect">Target language</label>
+    <select id="targetLangSelect"></select>
+
+    <label for="providerSelect">AI provider</label>
+    <select id="providerSelect">
+      <option value="gemini">Google Gemini</option>
+      <option value="gpt">OpenAI GPT</option>
+      <option value="nvidia">NVIDIA NIM</option>
+      <option value="qwen">Alibaba Qwen</option>
+    </select>
+
+    <label for="apiKeyInput">API key(s) — add more than one, separated by commas, for automatic fallback</label>
+    <input id="apiKeyInput" type="password" dir="ltr" placeholder="key1, key2, ..." />
+
+    <label for="modelSelect">Model</label>
+    <select id="modelSelect">
+      <option value="">Enter your API key first</option>
+    </select>
+    <button id="fetchModels" class="secondary">Fetch model list</button>
+
+    <button id="autoTranslate">Translate &amp; show subtitles</button>
+    <p class="hint">
+      Your API key is stored only in your browser and sent directly to the selected provider.
+    </p>
+  </section>
+
+  <section class="step">
+    <div class="stepTitle">Subtitle appearance</div>
+
+    <div class="row">
+      <label for="subColor">Subtitle color</label>
+      <input id="subColor" type="color" value="#ffffff" />
+    </div>
+
+    <label for="fontSize">Font size: <span id="fontSizeValue">24</span>px</label>
+    <input id="fontSize" type="range" min="14" max="44" value="24" />
+
+    <label for="bottom">Distance from bottom: <span id="bottomValue">12</span>%</label>
+    <input id="bottom" type="range" min="4" max="32" value="12" />
+
+    <label class="check">
+      <input id="enabled" type="checkbox" checked />
+      Show subtitles on the video
+    </label>
+  </section>
+
+  <section class="step">
+    <div class="stepTitle">Language learning</div>
+
+    <label class="check">
+      <input id="showOriginal" type="checkbox" />
+      Show original subtitle under the translation
+    </label>
+
+    <label class="check">
+      <input id="languageLearning" type="checkbox" />
+      Word lookup on the original subtitle
+    </label>
+
+    <p class="hint">
+      Hover a word in the original subtitle to see its meaning in your target language, and click the word to hear its pronunciation (powered by Google Translate). The video pauses while you hover.
+    </p>
+  </section>
+
+  <details class="step">
+    <summary>Available subtitle tracks</summary>
+    <div class="detailsBody">
+      <label for="trackSelect">Source track</label>
+      <select id="trackSelect">
+        <option value="">Loading...</option>
+      </select>
+      <button id="refreshTracks" class="secondary">Refresh tracks</button>
+      <p class="hint">
+        The real caption URL is captured from the YouTube player itself, not from the raw baseUrl.
+      </p>
+    </div>
+  </details>
+
+  <details class="step">
+    <summary>Manual translation</summary>
+    <div class="detailsBody">
+      <button id="downloadJson" class="secondary">Download JSON for translation</button>
+      <button id="downloadPrompt" class="secondary">Download ready-made prompt</button>
+      <input id="fileInput" type="file" accept=".json,application/json" />
+      <button id="loadTranslated">Load translated JSON onto the video</button>
+      <button id="clearSubs" class="danger">Clear subtitles for this video</button>
+    </div>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>
