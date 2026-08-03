@@ -2,6 +2,8 @@
 
 **AI-crafted subtitles for YouTube.** Extract captions, translate them into 40+ languages with your choice of AI provider, and display the result as an overlay on the video — all from a browser extension.
 
+> [NOW AVAILABLE ON MOZILA ADD ONS🎉](https://addons.mozilla.org/en-GB/firefox/addon/cccraft/)
+
 ## Features
 
 - **Automatic AI translation** — paste your API key, pick a model, click Translate. Subtitles are extracted from the YouTube player, sent to the AI in parallel chunks, and loaded back onto the video automatically.
