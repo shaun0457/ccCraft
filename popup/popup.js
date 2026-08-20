@@ -272,7 +272,7 @@ async function loadTracks({ quiet = false } = {}) {
 // ---------- API settings & model menu ----------
 
 async function persistApiSettings() {
-  await chrome.storage.local.set({ omidFaApiSettings: apiSettings });
+  await chrome.storage.local.set({ ccCraftApiSettings: apiSettings });
 }
 
 function populateModelMenu(provider) {
@@ -316,8 +316,8 @@ function syncProviderFields() {
 }
 
 async function loadApiSettings() {
-  const result = await chrome.storage.local.get({ omidFaApiSettings: apiSettings });
-  const stored = result.omidFaApiSettings || {};
+  const result = await chrome.storage.local.get({ ccCraftApiSettings: apiSettings });
+  const stored = result.ccCraftApiSettings || {};
 
   apiSettings = {
     provider: stored.provider || "gemini",
@@ -586,10 +586,10 @@ const DEFAULT_SUB_SETTINGS = {
 
 async function loadSettings() {
   const result = await chrome.storage.local.get({
-    omidFaSubtitleSettings: DEFAULT_SUB_SETTINGS
+    ccCraftSubtitleSettings: DEFAULT_SUB_SETTINGS
   });
 
-  const settings = { ...DEFAULT_SUB_SETTINGS, ...(result.omidFaSubtitleSettings || {}) };
+  const settings = { ...DEFAULT_SUB_SETTINGS, ...(result.ccCraftSubtitleSettings || {}) };
   fontSize.value = settings.fontSize;
   bottom.value = settings.bottom;
   enabled.checked = settings.enabled;
@@ -616,7 +616,7 @@ async function saveAndApplySettings() {
   $("fontSizeValue").textContent = settings.fontSize;
   $("bottomValue").textContent = settings.bottom;
 
-  await chrome.storage.local.set({ omidFaSubtitleSettings: settings });
+  await chrome.storage.local.set({ ccCraftSubtitleSettings: settings });
   await sendToTab({ type: "APPLY_SETTINGS", settings }).catch(() => {});
 }
 

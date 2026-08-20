@@ -11,8 +11,8 @@
  */
 
 (() => {
-  const REQ = "omid-ytfa-req";
-  const RES = "omid-ytfa-res";
+  const REQ = "cccraft-req";
+  const RES = "cccraft-res";
 
   let lastTimedTextOriginal = null;
   const waiters = [];

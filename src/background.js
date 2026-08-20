@@ -65,7 +65,7 @@ async function fetchWithTimeout(url, options) {
 }
 
 function statusKey(videoId) {
-  return "omidFaTranslateStatus:" + videoId;
+  return "ccCraftTranslateStatus:" + videoId;
 }
 
 async function setStatus(videoId, status) {

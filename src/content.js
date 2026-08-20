@@ -1,5 +1,5 @@
-const MAIN_REQ = "omid-ytfa-req";
-const MAIN_RES = "omid-ytfa-res";
+const MAIN_REQ = "cccraft-req";
+const MAIN_RES = "cccraft-res";
 
 let faCues = [];
 let settings = {
@@ -54,7 +54,7 @@ function getVideoDuration() {
 
 function requestMain(type, payload = {}, timeoutMs = 10000) {
   return new Promise((resolve) => {
-    const reqId = `omid_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const reqId = `cccraft_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
     const onMessage = (event) => {
       if (event.source !== window) return;
@@ -84,31 +84,31 @@ function injectOverlay() {
 
   if (!player) return null;
 
-  let overlay = document.getElementById("omid-fa-subtitle-overlay");
+  let overlay = document.getElementById("cccraft-subtitle-overlay");
 
   if (!overlay) {
     overlay = document.createElement("div");
-    overlay.id = "omid-fa-subtitle-overlay";
+    overlay.id = "cccraft-subtitle-overlay";
     overlay.textContent = "";
     player.appendChild(overlay);
   }
 
-  player.classList.toggle("omid-fa-on", Boolean(settings.enabled && faCues.length));
+  player.classList.toggle("cccraft-on", Boolean(settings.enabled && faCues.length));
   applySettings(settings);
 
   return overlay;
 }
 
 function setOverlayText(overlay, main, orig) {
-  let mainEl = overlay.querySelector(".omid-cc-main");
-  let origEl = overlay.querySelector(".omid-cc-orig");
+  let mainEl = overlay.querySelector(".cccraft-main");
+  let origEl = overlay.querySelector(".cccraft-orig");
 
   if (!mainEl || !origEl) {
     overlay.textContent = "";
     mainEl = document.createElement("div");
-    mainEl.className = "omid-cc-main";
+    mainEl.className = "cccraft-main";
     origEl = document.createElement("div");
-    origEl.className = "omid-cc-orig";
+    origEl.className = "cccraft-orig";
     overlay.appendChild(mainEl);
     overlay.appendChild(origEl);
     attachLearningEvents(origEl);
@@ -144,7 +144,7 @@ function renderOrigLine(origEl, text) {
 
   tokens.forEach((token, index) => {
     const span = document.createElement("span");
-    span.className = "omid-cc-word";
+    span.className = "cccraft-word";
     span.textContent = token;
     origEl.appendChild(span);
 
@@ -162,11 +162,11 @@ function getTooltipEl() {
   const player = document.querySelector(".html5-video-player") || document.querySelector("#movie_player");
   if (!player) return null;
 
-  let tip = document.getElementById("omid-cc-tooltip");
+  let tip = document.getElementById("cccraft-tooltip");
 
   if (!tip) {
     tip = document.createElement("div");
-    tip.id = "omid-cc-tooltip";
+    tip.id = "cccraft-tooltip";
     tip.className = "hidden";
     player.appendChild(tip);
   }
@@ -175,7 +175,7 @@ function getTooltipEl() {
 }
 
 function hideWordTooltip() {
-  const tip = document.getElementById("omid-cc-tooltip");
+  const tip = document.getElementById("cccraft-tooltip");
   if (tip) tip.classList.add("hidden");
 }
 
@@ -263,7 +263,7 @@ function attachLearningEvents(origEl) {
   origEl.addEventListener("mouseover", (event) => {
     if (!settings.languageLearning) return;
 
-    const span = event.target.closest?.(".omid-cc-word");
+    const span = event.target.closest?.(".cccraft-word");
     if (!span) return;
 
     const video = document.querySelector("video");
@@ -293,7 +293,7 @@ function attachLearningEvents(origEl) {
   origEl.addEventListener("click", (event) => {
     if (!settings.languageLearning) return;
 
-    const span = event.target.closest?.(".omid-cc-word");
+    const span = event.target.closest?.(".cccraft-word");
     if (!span) return;
 
     event.preventDefault();
@@ -312,13 +312,13 @@ function applySettings(nextSettings) {
     languageLearning: Boolean(nextSettings?.languageLearning ?? settings.languageLearning)
   };
 
-  const overlay = document.getElementById("omid-fa-subtitle-overlay");
+  const overlay = document.getElementById("cccraft-subtitle-overlay");
   const player = document.querySelector(".html5-video-player") || document.querySelector("#movie_player");
 
   if (overlay) {
-    overlay.style.setProperty("--omid-fa-font-size", `${settings.fontSize}px`);
-    overlay.style.setProperty("--omid-fa-color", settings.color);
-    overlay.style.setProperty("--omid-fa-bottom", `${settings.bottom}%`);
+    overlay.style.setProperty("--cccraft-font-size", `${settings.fontSize}px`);
+    overlay.style.setProperty("--cccraft-color", settings.color);
+    overlay.style.setProperty("--cccraft-bottom", `${settings.bottom}%`);
     overlay.style.direction = subsDir;
     overlay.classList.toggle("learning", Boolean(settings.languageLearning));
     if (!settings.languageLearning) hideWordTooltip();
@@ -327,7 +327,7 @@ function applySettings(nextSettings) {
 
   if (player && !settings.enabled) {
     // وقتی نمایش زیرنویس افزونه خاموش است، CC خود یوتیوب همیشه آزاد باشد
-    player.classList.remove("omid-fa-on");
+    player.classList.remove("cccraft-on");
   }
 }
 
@@ -381,7 +381,7 @@ function renderLoop() {
 
       // CC خود یوتیوب فقط همان لحظه‌ای مخفی شود که زیرنویس ترجمه‌شده روی صفحه است
       const playerEl = document.querySelector(".html5-video-player") || document.querySelector("#movie_player");
-      if (playerEl) playerEl.classList.toggle("omid-fa-on", showingText);
+      if (playerEl) playerEl.classList.toggle("cccraft-on", showingText);
     }
   } catch (err) {
     // خطای یک فریم نباید حلقه نمایش را برای همیشه متوقف کند
@@ -394,22 +394,22 @@ renderLoop();
 
 async function loadInitialSettings() {
   const result = await chrome.storage.local.get({
-    omidFaSubtitleSettings: settings
+    ccCraftSubtitleSettings: settings
   });
 
-  applySettings(result.omidFaSubtitleSettings);
+  applySettings(result.ccCraftSubtitleSettings);
 }
 
 async function loadStoredCues() {
-  const key = `omidFaSubs:${getVideoId()}`;
-  const metaKey = `omidFaSubsMeta:${getVideoId()}`;
+  const key = `cccraftSubs:${getVideoId()}`;
+  const metaKey = `cccraftSubsMeta:${getVideoId()}`;
   const result = await chrome.storage.local.get([key, metaKey]);
   faCues = Array.isArray(result[key]) ? result[key] : [];
   subsDir = result[metaKey]?.dir === "ltr" ? "ltr" : "rtl";
   origLang = result[metaKey]?.srcLang || origLang;
 
-  const api = await chrome.storage.local.get("omidFaApiSettings");
-  userLang = api?.omidFaApiSettings?.targetLang || userLang;
+  const api = await chrome.storage.local.get("ccCraftApiSettings");
+  userLang = api?.ccCraftApiSettings?.targetLang || userLang;
 
   applySettings(settings);
 }
@@ -685,7 +685,7 @@ function buildWorkfile(captured, cueResult) {
   const track = captured.track || {};
 
   return {
-    schema: "omid-youtube-fa-subtitle-v1.1",
+    schema: "cccraft-subtitle-v1.1",
     video: {
       id: getVideoId(),
       title: getVideoTitle(),
@@ -802,19 +802,19 @@ async function loadTranslatedJson(workfile, dir) {
   faCues = cues;
   subsDir = dir === "ltr" ? "ltr" : "rtl";
 
-  const key = `omidFaSubs:${getVideoId()}`;
-  const metaKey = `omidFaSubsMeta:${getVideoId()}`;
+  const key = `cccraftSubs:${getVideoId()}`;
+  const metaKey = `cccraftSubsMeta:${getVideoId()}`;
   origLang = workfile?.source_track?.languageCode || origLang;
 
-  const api = await chrome.storage.local.get("omidFaApiSettings");
-  userLang = api?.omidFaApiSettings?.targetLang || userLang;
+  const api = await chrome.storage.local.get("ccCraftApiSettings");
+  userLang = api?.ccCraftApiSettings?.targetLang || userLang;
 
   await chrome.storage.local.set({ [key]: cues, [metaKey]: { dir: subsDir, srcLang: origLang } });
 
   // اگر نمایش زیرنویس خاموش بود، روشن کن تا کاربر فکر نکند زیرنویس نیامده
   if (!settings.enabled) {
     settings.enabled = true;
-    await chrome.storage.local.set({ omidFaSubtitleSettings: settings });
+    await chrome.storage.local.set({ ccCraftSubtitleSettings: settings });
   }
 
   const overlay = injectOverlay();
@@ -835,14 +835,14 @@ async function loadTranslatedJson(workfile, dir) {
 async function clearSubs() {
   faCues = [];
 
-  const key = `omidFaSubs:${getVideoId()}`;
+  const key = `cccraftSubs:${getVideoId()}`;
   await chrome.storage.local.remove(key);
 
-  const overlay = document.getElementById("omid-fa-subtitle-overlay");
+  const overlay = document.getElementById("cccraft-subtitle-overlay");
   if (overlay) setOverlayText(overlay, "", "");
 
   const player = document.querySelector(".html5-video-player") || document.querySelector("#movie_player");
-  if (player) player.classList.remove("omid-fa-on");
+  if (player) player.classList.remove("cccraft-on");
 
   return { ok: true };
 }

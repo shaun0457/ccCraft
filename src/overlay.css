@@ -1,14 +1,14 @@
-#omid-fa-subtitle-overlay {
+#cccraft-subtitle-overlay {
   position: absolute;
   left: 50%;
-  bottom: var(--omid-fa-bottom, 12%);
+  bottom: var(--cccraft-bottom, 12%);
   transform: translateX(-50%);
   max-width: 84%;
   padding: 7px 15px;
   border-radius: 9px;
   background: rgba(0, 0, 0, 0.78);
-  color: var(--omid-fa-color, #fff);
-  font-size: var(--omid-fa-font-size, 24px);
+  color: var(--cccraft-color, #fff);
+  font-size: var(--cccraft-font-size, 24px);
   line-height: 1.65;
   direction: rtl;
   text-align: center;
@@ -19,12 +19,12 @@
   white-space: pre-wrap;
 }
 
-#omid-fa-subtitle-overlay.hidden,
-#omid-fa-subtitle-overlay.empty {
+#cccraft-subtitle-overlay.hidden,
+#cccraft-subtitle-overlay.empty {
   display: none;
 }
 
-#omid-fa-subtitle-overlay .omid-cc-orig {
+#cccraft-subtitle-overlay .cccraft-orig {
   font-size: 0.7em;
   line-height: 1.5;
   opacity: 0.85;
@@ -32,30 +32,30 @@
   margin-top: 2px;
 }
 
-#omid-fa-subtitle-overlay .omid-cc-orig.hidden {
+#cccraft-subtitle-overlay .cccraft-orig.hidden {
   display: none;
 }
 
-.html5-video-player.omid-fa-on .ytp-caption-window-container,
-.html5-video-player.omid-fa-on .caption-window {
+.html5-video-player.cccraft-on .ytp-caption-window-container,
+.html5-video-player.cccraft-on .caption-window {
   display: none !important;
 }
 
-#omid-fa-subtitle-overlay.learning .omid-cc-orig {
+#cccraft-subtitle-overlay.learning .cccraft-orig {
   pointer-events: auto;
 }
 
-#omid-fa-subtitle-overlay.learning .omid-cc-word {
+#cccraft-subtitle-overlay.learning .cccraft-word {
   border-radius: 4px;
   padding: 0 1px;
   cursor: pointer;
 }
 
-#omid-fa-subtitle-overlay.learning .omid-cc-word:hover {
+#cccraft-subtitle-overlay.learning .cccraft-word:hover {
   background: rgba(255, 255, 255, 0.28);
 }
 
-#omid-cc-tooltip {
+#cccraft-tooltip {
   position: absolute;
   transform: translate(-50%, -100%);
   z-index: 2147483001;
@@ -73,21 +73,21 @@
   white-space: normal;
 }
 
-#omid-cc-tooltip.hidden {
+#cccraft-tooltip.hidden {
   display: none;
 }
 
-#omid-cc-tooltip .meaning {
+#cccraft-tooltip .meaning {
   font-weight: 700;
 }
 
-#omid-cc-tooltip .alts {
+#cccraft-tooltip .alts {
   font-size: 12px;
   opacity: 0.85;
   margin-top: 2px;
 }
 
-#omid-cc-tooltip .say {
+#cccraft-tooltip .say {
   font-size: 11px;
   opacity: 0.7;
   margin-top: 4px;
