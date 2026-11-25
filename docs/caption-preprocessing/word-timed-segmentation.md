@@ -62,7 +62,18 @@ committed; the repo keeps only synthetic fixtures and short excerpts in reports.
 | 2 | + chunkSize counts raw cues | 23.4 % | 0/18 | the model merged split pieces back (A: 61.6 %) |
 | 3 | + sentence cut in groups (1.2 s) | 6.6 % | 3/18 | NVIDIA HTTP 429 and timeouts |
 | 4 | same as 3 | 2.9 % | 7/18 | NVIDIA HTTP 429 throughout; not valid |
+| 5, 6 | same as 3 | — | 16/18, 12/18 | HTTP 429 again, also under 30 requests/min; not valid |
+| 7 | same as 3, `--serial` | 8.0 % | 1/18 | clean; A 61.1 %; 33 of 37 left are short next-sentence tails |
+| 8 | + tail move, `--serial` | **7.1 %** | 1/18 | clean; A 59.0 %; missing translated lines 13 (A 153) |
 
 Start/end from raw times stayed at 100 % and cues over 7 s at 0 % in every run. Run 2's side-by-side showed A's
-translations shifted by one line in several places (the translation of the next line); B's were aligned. A clean run
-of the final version has not happened yet: the free NVIDIA quota was exhausted by runs 3 and 4.
+translations shifted by one line in several places (the translation of the next line); B's were aligned.
+
+Runs 3–6 hit HTTP 429 while the account still answered single requests: the free Ultra 550B tier rejects parallel
+requests (3 at a time), not only more than 40 per minute. `--serial` (one request at a time, eval only) ran clean.
+The extension itself still sends 3 in parallel; that is a separate fix.
+
+**Threshold result (run 8): "two-sentence cues ≤ 5 %" fails at 7.1 %; the user accepted it on 2026-11-25.** 30 of
+the 33 cues are a short whole sentence ("Right?", "Okay, okay.", "My agents did.") kept with a neighbour because
+alone it would last under 1.2 s; 3 start with the last word of the previous sentence ("is. That is the value").
+The other thresholds pass.
