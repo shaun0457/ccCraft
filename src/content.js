@@ -400,10 +400,36 @@ async function loadInitialSettings() {
   applySettings(result.ccCraftSubtitleSettings);
 }
 
+// Asks the background to remove expired subtitles (7 days after saving). Waits at most
+// SUBTITLE_PURGE_WAIT_MS so a sleeping or failing background never blocks the overlay.
+const SUBTITLE_PURGE_WAIT_MS = 3000;
+
+async function requestSubtitlePurge() {
+  let timer;
+  try {
+    await Promise.race([
+      chrome.runtime.sendMessage({ type: "PURGE_EXPIRED_SUBTITLES" }),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, SUBTITLE_PURGE_WAIT_MS);
+      })
+    ]);
+  } catch (_) {
+    // the cleanup is best effort
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Bumped by every load and every save: a load that is still waiting must not overwrite newer cues.
+let storedCuesGeneration = 0;
+
 async function loadStoredCues() {
+  const generation = ++storedCuesGeneration;
+  await requestSubtitlePurge();
   const key = `cccraftSubs:${getVideoId()}`;
   const metaKey = `cccraftSubsMeta:${getVideoId()}`;
   const result = await chrome.storage.local.get([key, metaKey]);
+  if (generation !== storedCuesGeneration) return;
   faCues = Array.isArray(result[key]) ? result[key] : [];
   subsDir = result[metaKey]?.dir === "ltr" ? "ltr" : "rtl";
   origLang = result[metaKey]?.srcLang || origLang;
@@ -442,6 +468,28 @@ function secondsToTimestamp(seconds) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
 }
 
+// Caption text is fetched with the user's YouTube cookies, and the URL comes from the page
+// (the MAIN-world bridge can be spoofed by any script on the page). Only YouTube's own
+// timedtext endpoint is allowed.
+const CAPTION_HOSTS = new Set(["www.youtube.com", "m.youtube.com", "youtube.com"]);
+
+function isAllowedCaptionUrl(urlValue) {
+  let url;
+  try {
+    url = new URL(String(urlValue));
+  } catch (_) {
+    return false;
+  }
+  return (
+    url.protocol === "https:" &&
+    CAPTION_HOSTS.has(url.hostname) &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === "" &&
+    url.pathname === "/api/timedtext"
+  );
+}
+
 function urlWithFormat(urlValue, fmt) {
   const url = new URL(urlValue);
   if (fmt) url.searchParams.set("fmt", fmt);
@@ -450,6 +498,7 @@ function urlWithFormat(urlValue, fmt) {
 
 async function readCaptionText(url, fmt) {
   const finalUrl = fmt ? urlWithFormat(url, fmt) : url;
+  if (!isAllowedCaptionUrl(finalUrl)) throw new Error("caption URL is not a YouTube timedtext URL");
 
   const response = await fetch(finalUrl, {
     credentials: "include",
@@ -798,6 +847,7 @@ function extractTranslatedCues(workfile) {
 
 async function loadTranslatedJson(workfile, dir) {
   const cues = extractTranslatedCues(workfile);
+  storedCuesGeneration++;
 
   faCues = cues;
   subsDir = dir === "ltr" ? "ltr" : "rtl";
@@ -809,7 +859,8 @@ async function loadTranslatedJson(workfile, dir) {
   const api = await chrome.storage.local.get("ccCraftApiSettings");
   userLang = api?.ccCraftApiSettings?.targetLang || userLang;
 
-  await chrome.storage.local.set({ [key]: cues, [metaKey]: { dir: subsDir, srcLang: origLang } });
+  await chrome.storage.local.set({ [key]: cues, [metaKey]: { dir: subsDir, srcLang: origLang, saved_at: Date.now() } });
+  requestSubtitlePurge();
 
   // اگر نمایش زیرنویس خاموش بود، روشن کن تا کاربر فکر نکند زیرنویس نیامده
   if (!settings.enabled) {
@@ -833,10 +884,11 @@ async function loadTranslatedJson(workfile, dir) {
 }
 
 async function clearSubs() {
+  storedCuesGeneration++;
   faCues = [];
 
-  const key = `cccraftSubs:${getVideoId()}`;
-  await chrome.storage.local.remove(key);
+  const videoId = getVideoId();
+  await chrome.storage.local.remove([`cccraftSubs:${videoId}`, `cccraftSubsMeta:${videoId}`, `ccCraftTranslateStatus:${videoId}`]);
 
   const overlay = document.getElementById("cccraft-subtitle-overlay");
   if (overlay) setOverlayText(overlay, "", "");
