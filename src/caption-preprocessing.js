@@ -77,12 +77,12 @@
     return t ? t.split(" ") : [];
   }
 
-  // Comparison form of a word: case and surrounding punctuation ignored, inner punctuation
-  // (vision.md, don't, 2.1) kept. ">>" (speaker change) is kept as a word on purpose.
+  // Comparison form of a word: case and surrounding sentence punctuation (quotes, brackets, dashes
+  // used as punctuation) ignored. Everything else is part of the word, including symbols that carry
+  // meaning: $100, -5, 50%, C++, &, >> (speaker change), and inner punctuation (vision.md, don't, 2.1).
+  const EDGE_PUNCTUATION = /^[.,;:!?"'()\[\]{}…«»“”—–]+|[.,;:!?"'()\[\]{}…«»“”—–]+$/gu;
   function normToken(token) {
-    const t = String(token).replace(/[‘’ʼ]/g, "'").toLowerCase();
-    if (t === ">>") return t;
-    return t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    return String(token).replace(/[‘’ʼ]/g, "'").toLowerCase().replace(EDGE_PUNCTUATION, "");
   }
 
   function normWords(text) {
@@ -97,8 +97,9 @@
     return NEGATIONS.has(n) || /n't$/.test(n);
   }
 
+  // Numbers with their sign, currency and percent: "-5" and "5" differ, "$100" and "100" differ.
   function digitsOf(tokens) {
-    return tokens.join(" ").replace(/[^\p{N}]+/gu, " ").trim();
+    return (tokens.join(" ").match(/[-+$€£¥]?\p{N}+(?:[.,:]\p{N}+)*%?/gu) || []).join(" ");
   }
 
   function codeError(code) {
@@ -428,7 +429,10 @@
       if (!ins.length) code = "unexplained_deletion";
       else if (!del.length) code = "unexplained_insertion";
       else {
-        c = cores.findIndex((core) => sameList(core.o, delN) && sameList(core.r, insN));
+        // A correction applies only inside the group that listed it (when the group is known).
+        const outGroup = out[outIdx[ins[0]]].g;
+        c = cores.findIndex((core, ci) => (corrections[ci].group == null || corrections[ci].group === outGroup) &&
+          sameList(core.o, delN) && sameList(core.r, insN));
         if (c < 0) code = "unexplained_change";
         else if (del.length > cfg.maxCorrectionTokens || ins.length > cfg.maxCorrectionTokens) code = "correction_too_large";
         else if (delN.filter(isNegation).length !== insN.filter(isNegation).length) code = "negation_changed";
@@ -444,7 +448,9 @@
       }
       changedBy.set(g, (changedBy.get(g) || 0) + del.length);
       for (const j of ins) for (const d of trail[j]) stream.push({ d, k });
-      for (const j of ins) sources[k].add(out[outIdx[j]].g);
+      // A correction spanning a cue boundary moves the later cue's words into cue k, so every cue it
+      // consumed is tied to the group that wrote it (otherwise the groups could be decided apart).
+      for (const i of del) for (const j of ins) sources[raw[i].k].add(out[outIdx[j]].g);
       applied.push({ ...corrections[c], unit_index: k });
     }
     const perUnit = units.map(() => []);
@@ -568,8 +574,9 @@
 
   // ---------- orchestration ----------
 
-  async function preprocessWorkfile(rawWorkfile, options) {
-    const cfg = { ...DEFAULTS, ...(options && options.config || {}) };
+  async function preprocessWorkfile(rawWorkfile, options = {}) {
+    options = options || {};
+    const cfg = { ...DEFAULTS, ...(options.config || {}) };
     const now = options.now || Date.now;
     const startedAt = now();
     const deadline = startedAt + cfg.budgetMs;
@@ -702,7 +709,7 @@
         const groups = result.groups;
         const groupOfUnit = [];
         groups.forEach((g, gi) => g.ids.forEach(() => groupOfUnit.push(gi)));
-        const aligned = alignChunk(chunk, groups.map((g) => g.text), groups.flatMap((g) => g.corrections), cfg, groupOfUnit);
+        const aligned = alignChunk(chunk, groups.map((g) => g.text), groups.flatMap((g, gi) => g.corrections.map((c) => ({ ...c, group: gi }))), cfg, groupOfUnit);
 
         // Merge consecutive model groups when the model wrote one cue's words into another group's text.
         const link = new Array(Math.max(0, groups.length - 1)).fill(false);

@@ -80,14 +80,15 @@ the old one (tested).
 
 ## T2: tests
 
-`node --test tests/*.test.js`: **41 passed, 0 failed**. These tests use a mock model, need no key, and finish in under 1 s.
+`node --test tests/*.test.js`: **46 passed, 0 failed**. These tests use a mock model, need no key, and finish in under 1 s.
 They cover a sentence split across cues (the plan's 101/102 example), two sentences inside one cue (not split, continuation
 not invented), rolling duplicates, legitimate repetitions, technical identifiers and numbers, a long pause and a speaker
 change, ambiguous ASR (accepted, unlisted, negating, too-large and too-many corrections), malformed, missing, duplicate,
 reordered and invented model ids, invalid JSON then a valid retry, a single failing chunk, a timeout, the budget running
 out, HTTP errors reduced to codes, a failed context request, sampling of long transcripts, prompt injection, immutable input
 and the output contract. The integration tests run the real background.js in a vm, loading the module through the same
-`importScripts` call. They check that the translator request body is byte-identical, cover the bypass for manual tracks,
+`importScripts` call. Firefox loading is also covered: the manifest's `background.scripts` are loaded in order with no
+`importScripts`. They check that the translator request body is byte-identical, cover the bypass for manual tracks,
 other providers, non-Nemotron models and the opt-out flag, and test fallback when the API rejects the key (keys rotate,
 translation still runs, the warning is visible).
 
@@ -144,5 +145,11 @@ runs and handled by the deterministic checks:
 - Pauses inside json3 tracks are not detected (see T1), so a group can span a silence of up to the 7 s limit.
 - The hosted endpoint's context and output limits are not documented. The model card lists 1M context (256K native), and
   this layer stays far below that (≤ 48k characters of context, `max_tokens` 8192).
+- There is no cap on the number of reconstruction requests (one per 40 cues). For a very long video the 180 s budget bounds
+  them: chunks still pending when the budget runs out keep their original cues, so a long video can be only partly
+  reconstructed.
+- Languages that don't separate words with spaces (for example Chinese or Japanese automatic captions) are not supported.
+  The gate does not exclude them. Words are compared by whitespace, so such text is mostly kept as raw (no words lost), and
+  grouped cues are joined with spaces.
 - The plan's known risk is unchanged and not addressed here: `parseTranslationsPositional` assigns ids by position. Fewer,
   longer cues are not claimed to fix it.

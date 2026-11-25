@@ -48,7 +48,9 @@ function loadContentParsers() {
   return Object.fromEntries(names.map((n) => [n, ctx[n]]));
 }
 
-function loadBackground({ fetchImpl, storage = {}, tabResponses } = {}) {
+// browser "chrome": service worker, background.js pulls the module in with importScripts.
+// browser "firefox": background page, no importScripts; manifest background.scripts load in order.
+function loadBackground({ fetchImpl, storage = {}, tabResponses, browser = "chrome" } = {}) {
   const store = { ...storage };
   const sentToTabs = [];
   const chrome = {
@@ -86,12 +88,19 @@ function loadBackground({ fetchImpl, storage = {}, tabResponses } = {}) {
     structuredClone
   });
   ctx.globalThis = ctx;
-  ctx.importScripts = (...files) => {
-    for (const file of files) {
-      vm.runInContext(fs.readFileSync(path.join(SRC, file), "utf8"), ctx, { filename: file });
+  if (browser === "firefox") {
+    const manifest = JSON.parse(fs.readFileSync(path.join(SRC, "..", "manifest.json"), "utf8"));
+    for (const file of manifest.background.scripts) {
+      vm.runInContext(fs.readFileSync(path.join(SRC, "..", file), "utf8"), ctx, { filename: file });
     }
-  };
-  vm.runInContext(fs.readFileSync(path.join(SRC, "background.js"), "utf8"), ctx, { filename: "background.js" });
+  } else {
+    ctx.importScripts = (...files) => {
+      for (const file of files) {
+        vm.runInContext(fs.readFileSync(path.join(SRC, file), "utf8"), ctx, { filename: file });
+      }
+    };
+    vm.runInContext(fs.readFileSync(path.join(SRC, "background.js"), "utf8"), ctx, { filename: "background.js" });
+  }
   return { ctx, store, sentToTabs };
 }
 

@@ -467,3 +467,57 @@ test("invalid input never throws", async () => {
   assert.deepEqual(out, { cues: null });
   assert.equal(report.reason, "fallback_error");
 });
+
+// ---------- review round 1 regressions ----------
+
+const normSeq = (cues) => cues.map((c) => c.source).join(" ").split(" ").map(CP.normToken).filter(Boolean);
+
+test("a correction across a cue and group boundary never duplicates or drops words when a neighbour is rejected", async () => {
+  const raw = workfile([cue(1, 0, 2, "we push it to get"), cue(2, 2, 4.5, "hub every day and the build runs fine on main")]);
+  const fix = [{ original: "get hub", replacement: "GitHub", reason: "product" }];
+  const allowed = [
+    "we push it to get hub every day and the build runs fine on main",
+    "we push it to github every day and the build runs fine on main"
+  ];
+  // B unreliable
+  let m = mockModel(() => [{ ids: [1], text: "We push it to GitHub", corrections: fix }, { ids: [2], text: "Something totally different here now, okay." }]);
+  let { workfile: out } = await CP.preprocessWorkfile(raw, { callModel: m.callModel });
+  assert.ok(allowed.includes(normSeq(out.cues).join(" ")), normSeq(out.cues).join(" "));
+  assertValidCues(out, raw);
+  // A unreliable
+  m = mockModel(() => [{ ids: [1], text: "We push one two three four to GitHub", corrections: fix }, { ids: [2], text: "every day, and the build runs fine on main." }]);
+  ({ workfile: out } = await CP.preprocessWorkfile(raw, { callModel: m.callModel }));
+  assert.ok(allowed.includes(normSeq(out.cues).join(" ")), normSeq(out.cues).join(" "));
+  assertValidCues(out, raw);
+});
+
+test("meaningful symbols are words: $, minus, %, C++ and & cannot be dropped or added silently", async () => {
+  const raw = workfile([cue(1, 0, 3, "it costs $100 and -5 degrees in C++ & Rust"), cue(2, 3, 5, "about 50% of it")]);
+  const m = mockModel(() => [
+    { ids: [1], text: "It costs 100 and 5 degrees in C and Rust.", corrections: [] },
+    { ids: [2], text: "About 50 percent of it & more.", corrections: [] }
+  ]);
+  const { workfile: out } = await CP.preprocessWorkfile(raw, { callModel: m.callModel });
+  assert.deepEqual(normSeq(out.cues), normSeq(raw.cues));
+  assert.match(out.cues.map((c) => c.source).join(" "), /\$100 .*-5 .*C\+\+ & .*50%/);
+  const numeric = CP.alignGroup([{ uid: 1, rawIds: [1], start: 0, end: 1, text: "minus -5 here" }], "minus 5 here", [{ original: "-5", replacement: "5", reason: "x" }], CP.DEFAULTS);
+  assert.equal(numeric.reverted[0].code, "number_changed");
+});
+
+test("a correction listed by one group does not apply inside another group", async () => {
+  const raw = workfile([cue(1, 0, 2, "get hub is great"), cue(2, 3, 5, "get hub again")]);
+  const m = mockModel(() => [
+    { ids: [1], text: "GitHub is great.", corrections: [{ original: "get hub", replacement: "GitHub", reason: "product" }] },
+    { ids: [2], text: "GitHub again.", corrections: [] }
+  ]);
+  const { workfile: out, report } = await CP.preprocessWorkfile(raw, { callModel: m.callModel });
+  assert.deepEqual(out.cues.map((c) => c.source), ["GitHub is great.", "get hub again."]);
+  assert.equal(report.corrections.length, 1);
+});
+
+test("missing options never throws: falls back to the original workfile", async () => {
+  const raw = threeCues();
+  const { workfile: out, report } = await CP.preprocessWorkfile(raw);
+  assert.equal(out, raw);
+  assert.match(report.reason, /^fallback/);
+});

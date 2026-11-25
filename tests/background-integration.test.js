@@ -88,6 +88,17 @@ test("automatic track + Nemotron: reconstructed cues go to the existing translat
   assert.doesNotMatch(JSON.stringify(status), /vision\.md|nvapi/);
 });
 
+test("Firefox: manifest background.scripts load the module without importScripts and preprocessing runs", async () => {
+  const raw = workfileFromJson3("auto-captions-technical.json3");
+  const { fetchImpl, requests } = makeFetch();
+  const { ctx, sentToTabs } = loadBackground({ fetchImpl, browser: "firefox" });
+  assert.equal(ctx.importScripts, undefined);
+  assert.equal(typeof ctx.CaptionPreprocessing?.preprocessWorkfile, "function");
+  await ctx.translateWorkfile({ workfile: raw, provider: "nvidia", apiKey: "k", model: NEMOTRON, tabId: 1, lang });
+  assert.equal(requests.filter(isPreprocessRequest).length, 2);
+  assert.ok(sentToTabs[0].message.workfile.caption_preprocessing);
+});
+
 for (const [name, opts] of [
   ["manual track", { kind: "manual" }],
   ["other provider", { provider: "gpt", model: "gpt-4o-mini" }],
