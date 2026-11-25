@@ -28,7 +28,12 @@ const THRESHOLDS = {
   longCues: 0.02, // share of B cues longer than 7 s (<=)
   fallbackChunks: 0.1 // share of B reconstruction chunks that fell back to raw cues (<=)
 };
-const TRANSLATE_CONCURRENCY = 3;
+// --serial: one request at a time and a 15-minute preprocessing budget. Measures quality when the
+// free tier rejects parallel requests (HTTP 429); not the extension's runtime settings.
+const SERIAL = process.argv.includes("--serial");
+const TRANSLATE_CONCURRENCY = SERIAL ? 1 : 3;
+const SERIAL_CONFIG = SERIAL ? { concurrency: 1, budgetMs: 900000 } : {};
+const RPM_LIMIT = 30;
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -127,7 +132,20 @@ async function main() {
   const translate = !process.argv.includes("--no-translate");
   const lang = LANGS[arg("--lang", "zh-TW")];
   const raw = loadRaw(file);
-  const bg = loadBackground({ fetchImpl: (url, init) => fetch(url, init) }).ctx;
+  // The free NVIDIA tier allows 40 requests per minute; retries after a 429 come fast, so stay under
+  // it here or one burst rate-limits the rest of the run.
+  const sent = [];
+  const limitedFetch = async (url, init) => {
+    for (;;) {
+      const now = Date.now();
+      while (sent.length && now - sent[0] > 60000) sent.shift();
+      if (sent.length < RPM_LIMIT) break;
+      await new Promise((r) => setTimeout(r, 60000 - (now - sent[0]) + 50));
+    }
+    sent.push(Date.now());
+    return fetch(url, init);
+  };
+  const bg = loadBackground({ fetchImpl: limitedFetch }).ctx;
   const callModel = (prompt, options) => bg.callOpenAiCompatible("nvidia", key, MODEL, prompt, {
     ...options,
     extraBody: { chat_template_kwargs: { enable_thinking: false } }
@@ -135,7 +153,8 @@ async function main() {
 
   const runs = {};
   for (const variant of ["A", "B"]) {
-    const config = { splitAtSentenceEnds: variant === "B" };
+    // A is PR #3: neither the cue split nor the group cut at sentence ends.
+    const config = { ...SERIAL_CONFIG, ...(variant === "B" ? {} : { splitAtSentenceEnds: false, sentenceCutMinSeconds: 0 }) };
     console.error("preprocessing " + variant + " ...");
     const { workfile, report } = await CP.preprocessWorkfile(raw, { callModel, config });
     runs[variant] = { workfile, report, m: metrics(raw, workfile, report) };

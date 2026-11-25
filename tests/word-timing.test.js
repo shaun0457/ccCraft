@@ -197,3 +197,35 @@ test("manual export drops per-word times and keeps every other field", () => {
   assert.deepEqual(out.video, wf.video);
   assert.ok(Array.isArray(wf.cues[0].words), "the input is not mutated");
 });
+
+test("a short next-sentence tail moves to the following cue; not across a hard break or past the limits", async () => {
+  const raw = workfile([
+    cue(1, 0, 3, "we can discover this at some point, right?"),
+    cue(2, 3, 3.4, "And our"),
+    cue(3, 3.4, 6, "goal is to keep it short.")
+  ]);
+  // The model puts the tail with the sentence before it, and the rest in a second group.
+  const groups = async (prompt) => {
+    if (prompt.startsWith("Read this automatic caption transcript")) return oneGroupPerLine(prompt);
+    return JSON.stringify({ groups: [
+      { ids: [1, 2], text: "We can discover this at some point, right? And our", corrections: [] },
+      { ids: [3], text: "goal is to keep it short.", corrections: [] }
+    ] });
+  };
+  const { workfile: out, report } = await CP.preprocessWorkfile(raw, { callModel: groups });
+  assert.equal(report.tails_moved, 1);
+  assert.deepEqual(out.cues.map((c) => [c.source_ids, c.source]), [
+    [[1], "We can discover this at some point, right?"],
+    [[2, 3], "And our goal is to keep it short."]
+  ]);
+  assert.deepEqual(out.cues.map((c) => [c.start, c.end]), [[0, 3], [3, 6]]);
+
+  // A long next segment: moving would pass the 7 s limit, so the tail stays.
+  const long = workfile([raw.cues[0], raw.cues[1], cue(3, 3.4, 10.5, "goal is to keep it short.")]);
+  const { workfile: kept } = await CP.preprocessWorkfile(long, { callModel: groups });
+  assert.deepEqual(kept.cues.map((c) => c.source_ids), [[1, 2], [3]]);
+
+  // Off with sentenceCutMinSeconds 0.
+  const { workfile: off } = await CP.preprocessWorkfile(raw, { callModel: groups, config: { sentenceCutMinSeconds: 0 } });
+  assert.deepEqual(off.cues.map((c) => c.source_ids), [[1, 2], [3]]);
+});

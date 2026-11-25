@@ -18,6 +18,9 @@ dropped the per-word offsets (`tOffsetMs`). json3 has them for 647 of the clip's
 - After the model groups units, a group is cut after a unit that ends a sentence when the text since the last cut and
   the next sentence each last at least `sentenceCutMinSeconds` (1.2 s); a shorter sentence stays with the one before
   it. Reason: on the real clip the model merged most split pieces back together (run 2 below).
+- A cue that ends with the short start of the next sentence (`...right? And our`, under 1.2 s, not itself a sentence)
+  hands that tail to the next cue, unless a hard break or gap follows or the next cue would pass 7 s / 140 chars.
+  Reason: run 7 (clean) left 8.0 % two-sentence cues, 33 of 37 of them such tails.
 - The translator prompt gets the context profile (topic, terms, proper nouns) of a preprocessed workfile,
   and, when preprocessing ran (its gate selected a Nemotron model), translation requests send
   `chat_template_kwargs: {enable_thinking: false}`; all other translation requests keep the old body (Q1).

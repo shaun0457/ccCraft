@@ -583,6 +583,42 @@
     return spans;
   }
 
+  // A segment that ends with the start of the next sentence ("...right? And our") hands that tail
+  // to the next segment when the tail is shorter than sentenceCutMinSeconds, does not itself end a
+  // sentence, no hard break or long gap follows it, and the next segment stays within the limits.
+  // Mutates segments in place; returns the number of tails moved.
+  function moveSentenceTails(segments, breaks, cfg) {
+    const min = cfg.sentenceCutMinSeconds;
+    if (!(min > 0)) return 0;
+    const textLen = (items) => items.map((it) => it.tokens.join(" ")).filter(Boolean).join(" ").length;
+    let moved = 0;
+    for (let s = 0; s + 1 < segments.length; s++) {
+      const seg = segments[s];
+      const next = segments[s + 1];
+      let k = -1;
+      for (let i = seg.length - 1; i >= 1; i--) {
+        if (endsSentence(seg[i - 1].tokens)) {
+          k = i;
+          break;
+        }
+      }
+      if (k < 1) continue;
+      const tail = seg.slice(k);
+      const last = tail[tail.length - 1];
+      const first = next[0];
+      if (endsSentence(last.tokens)) continue;
+      if (last.unit.end - tail[0].unit.start >= min) continue;
+      if (breaks[first.unit.uid - 1] || first.unit.start - last.unit.end > cfg.maxGapSeconds) continue;
+      const merged = tail.concat(next);
+      if (merged[merged.length - 1].unit.end - merged[0].unit.start > cfg.maxGroupSeconds) continue;
+      if (textLen(merged) > cfg.maxGroupChars) continue;
+      segments[s] = seg.slice(0, k);
+      segments[s + 1] = merged;
+      moved++;
+    }
+    return moved;
+  }
+
   function segmentSpan(items, breaks, cfg) {
     const n = items.length;
     const textOf = (from, to) => items.slice(from, to).map((it) => it.tokens.join(" ")).filter(Boolean).join(" ");
@@ -691,6 +727,7 @@
       cue_count: 0,
       context_coverage: "none",
       cues_split: 0,
+      tails_moved: 0,
       chunks_total: 0,
       chunks_reconstructed: 0,
       chunks_fallback: 0,
@@ -895,6 +932,7 @@
 
       if (!report.chunks_reconstructed) return finish(rawWorkfile, "fallback_all_chunks_failed");
 
+      report.tails_moved = moveSentenceTails(segments, breaks, cfg);
       const cues = buildCues(segments);
       const invalid = validateOutput(cues, rawCues);
       if (invalid) {
