@@ -1,0 +1,263 @@
+{
+  "schema": "cccraft-subtitle-v1.1",
+  "video": {
+    "id": "fixture-video",
+    "title": "Synthetic technical clip",
+    "url": "https://www.youtube.com/watch?v=fixture-video",
+    "duration_seconds": 60
+  },
+  "source_track": {
+    "languageCode": "en",
+    "label": "English (auto-generated)",
+    "kind": "asr",
+    "vssId": "a.en",
+    "read_format": "json3-player-url"
+  },
+  "generated_at": "2026-11-25T00:00:00.000Z",
+  "model_prompt": "(omitted in fixture)",
+  "cues": [
+    {
+      "id": 1,
+      "start": 0.12,
+      "end": 2.39,
+      "start_time": "00:00:00.120",
+      "end_time": "00:00:02.390",
+      "source": "so today I want to walk you through how",
+      "fa": ""
+    },
+    {
+      "id": 2,
+      "start": 2.39,
+      "end": 4.1,
+      "start_time": "00:00:02.390",
+      "end_time": "00:00:04.100",
+      "source": "we set up the project docs",
+      "fa": ""
+    },
+    {
+      "id": 3,
+      "start": 4.1,
+      "end": 5.62,
+      "start_time": "00:00:04.100",
+      "end_time": "00:00:05.620",
+      "source": "so if you look at the",
+      "fa": ""
+    },
+    {
+      "id": 4,
+      "start": 5.62,
+      "end": 8.05,
+      "start_time": "00:00:05.620",
+      "end_time": "00:00:08.050",
+      "source": "vision.md here and if you're going to",
+      "fa": ""
+    },
+    {
+      "id": 5,
+      "start": 8.05,
+      "end": 10.4,
+      "start_time": "00:00:08.050",
+      "end_time": "00:00:10.400",
+      "source": "build something with it you need to keep",
+      "fa": ""
+    },
+    {
+      "id": 6,
+      "start": 10.4,
+      "end": 11.9,
+      "start_time": "00:00:10.400",
+      "end_time": "00:00:11.900",
+      "source": "this file short",
+      "fa": ""
+    },
+    {
+      "id": 7,
+      "start": 11.9,
+      "end": 14.3,
+      "start_time": "00:00:11.900",
+      "end_time": "00:00:14.300",
+      "source": "the second file is the road map which",
+      "fa": ""
+    },
+    {
+      "id": 8,
+      "start": 14.3,
+      "end": 16.6,
+      "start_time": "00:00:14.300",
+      "end_time": "00:00:16.600",
+      "source": "lists the milestones for version 2.1",
+      "fa": ""
+    },
+    {
+      "id": 9,
+      "start": 16.6,
+      "end": 18.7,
+      "start_time": "00:00:16.600",
+      "end_time": "00:00:18.700",
+      "source": "and we keep it in the repo next to",
+      "fa": ""
+    },
+    {
+      "id": 10,
+      "start": 18.7,
+      "end": 22,
+      "start_time": "00:00:18.700",
+      "end_time": "00:00:22.000",
+      "source": "the readme",
+      "fa": ""
+    },
+    {
+      "id": 11,
+      "start": 22,
+      "end": 26.2,
+      "start_time": "00:00:22.000",
+      "end_time": "00:00:26.200",
+      "source": "[Music]",
+      "fa": ""
+    },
+    {
+      "id": 12,
+      "start": 26.2,
+      "end": 28.5,
+      "start_time": "00:00:26.200",
+      "end_time": "00:00:28.500",
+      "source": ">> quick question does that work with",
+      "fa": ""
+    },
+    {
+      "id": 13,
+      "start": 28.5,
+      "end": 30.1,
+      "start_time": "00:00:28.500",
+      "end_time": "00:00:30.100",
+      "source": "get hub actions",
+      "fa": ""
+    },
+    {
+      "id": 14,
+      "start": 30.1,
+      "end": 32.6,
+      "start_time": "00:00:30.100",
+      "end_time": "00:00:32.600",
+      "source": ">> yes it does you just add a workflow",
+      "fa": ""
+    },
+    {
+      "id": 15,
+      "start": 32.6,
+      "end": 35,
+      "start_time": "00:00:32.600",
+      "end_time": "00:00:35.000",
+      "source": "file under dot github slash workflows",
+      "fa": ""
+    },
+    {
+      "id": 16,
+      "start": 35,
+      "end": 37.2,
+      "start_time": "00:00:35.000",
+      "end_time": "00:00:37.200",
+      "source": "and it runs on every pull request",
+      "fa": ""
+    },
+    {
+      "id": 17,
+      "start": 37.2,
+      "end": 39.1,
+      "start_time": "00:00:37.200",
+      "end_time": "00:00:39.100",
+      "source": "you don't need to install anything",
+      "fa": ""
+    },
+    {
+      "id": 18,
+      "start": 39.1,
+      "end": 41,
+      "start_time": "00:00:39.100",
+      "end_time": "00:00:41.000",
+      "source": "else it's not that hard",
+      "fa": ""
+    },
+    {
+      "id": 19,
+      "start": 41,
+      "end": 43.4,
+      "start_time": "00:00:41.000",
+      "end_time": "00:00:43.400",
+      "source": "the first step is to run npm install",
+      "fa": ""
+    },
+    {
+      "id": 20,
+      "start": 43.4,
+      "end": 45.6,
+      "start_time": "00:00:43.400",
+      "end_time": "00:00:45.600",
+      "source": "then npm test and if the tests pass",
+      "fa": ""
+    },
+    {
+      "id": 21,
+      "start": 45.6,
+      "end": 47.8,
+      "start_time": "00:00:45.600",
+      "end_time": "00:00:47.800",
+      "source": "and pie test for the python part",
+      "fa": ""
+    },
+    {
+      "id": 22,
+      "start": 47.8,
+      "end": 49,
+      "start_time": "00:00:47.800",
+      "end_time": "00:00:49.000",
+      "source": "you can push",
+      "fa": ""
+    },
+    {
+      "id": 23,
+      "start": 49,
+      "end": 51.6,
+      "start_time": "00:00:49.000",
+      "end_time": "00:00:51.600",
+      "source": "no no no don't push to main directly",
+      "fa": ""
+    },
+    {
+      "id": 24,
+      "start": 51.6,
+      "end": 53.9,
+      "start_time": "00:00:51.600",
+      "end_time": "00:00:53.900",
+      "source": "open a pull request instead",
+      "fa": ""
+    },
+    {
+      "id": 25,
+      "start": 53.9,
+      "end": 55.3,
+      "start_time": "00:00:53.900",
+      "end_time": "00:00:55.300",
+      "source": "thank you",
+      "fa": ""
+    },
+    {
+      "id": 26,
+      "start": 55.3,
+      "end": 57,
+      "start_time": "00:00:55.300",
+      "end_time": "00:00:57.000",
+      "source": "thank you",
+      "fa": ""
+    },
+    {
+      "id": 27,
+      "start": 57,
+      "end": 60.2,
+      "start_time": "00:00:57.000",
+      "end_time": "00:01:00.200",
+      "source": "see you in the next video",
+      "fa": ""
+    }
+  ]
+}
