@@ -219,16 +219,16 @@ function parseTranslationsPositional(text, expectedCount) {
 }
 
 // Nemotron reasoning tokens count against max_tokens (4096) and can truncate a 50-line chunk.
-function translationOptions(provider, model) {
-  if (provider === "nvidia" && /nemotron/i.test(String(model || ""))) {
-    return { extraBody: { chat_template_kwargs: { enable_thinking: false } } };
-  }
-  return {};
+// Thinking is turned off only when caption preprocessing ran: its gate already selected a Nemotron
+// model that takes this switch. Every other request keeps the old body.
+function translationOptions(thinkingOff) {
+  return thinkingOff ? { extraBody: { chat_template_kwargs: { enable_thinking: false } } } : {};
 }
 
-async function translateChunk(provider, keyRing, model, chunkCues, lang, context) {
-  const prompt = buildChunkPrompt(chunkCues, lang, context);
-  const options = translationOptions(provider, model);
+// extras: { context: preprocessing profile or null, thinkingOff: boolean }
+async function translateChunk(provider, keyRing, model, chunkCues, lang, extras = {}) {
+  const prompt = buildChunkPrompt(chunkCues, lang, extras.context);
+  const options = translationOptions(extras.thinkingOff === true);
   const attempts = Math.max(3, keyRing.keys.length);
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
@@ -304,6 +304,8 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
   });
   const cues = Array.isArray(workfile?.cues) ? workfile.cues : [];
   const context = workfile?.caption_preprocessing?.profile || null;
+  // Preprocessing ran (applied or fell back) only behind its Nemotron gate; an internal error may come before it.
+  const thinkingOff = Boolean(preprocessing) && preprocessing.reason !== "fallback_error";
   if (!cues.length) {
     await setStatus(videoId, { state: "error", error: "There are no subtitle lines to translate." });
     return;
@@ -325,7 +327,7 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
       while (next < chunks.length) {
         const chunk = chunks[next++];
         try {
-          const translations = await translateChunk(provider, keyRing, model, chunk, lang, context);
+          const translations = await translateChunk(provider, keyRing, model, chunk, lang, { context, thinkingOff });
           for (const item of translations) {
             const fa = String(item?.fa || "").trim();
             if (item && item.id != null && fa) {

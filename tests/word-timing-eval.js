@@ -98,7 +98,7 @@ async function translateAll(bg, key, cues, lang, variant, context) {
           const prompt = bg.buildChunkPrompt(chunk, lang);
           items = bg.parseTranslations(await bg.callOpenAiCompatible("nvidia", ring.current(), MODEL, prompt));
         } else {
-          items = await bg.translateChunk("nvidia", ring, MODEL, chunk, lang, context);
+          items = await bg.translateChunk("nvidia", ring, MODEL, chunk, lang, { context, thinkingOff: true });
         }
         for (const t of items) out.set(Number(t.id), String(t.fa || "").trim());
       } catch (err) {

@@ -124,10 +124,9 @@ for (const [name, opts] of [
     assert.deepEqual(sent.cues.map((c) => [c.id, c.start, c.end, c.source]), raw.cues.map((c) => [c.id, c.start, c.end, c.source]));
     assert.equal(sent.caption_preprocessing, undefined);
     const translation = requests.filter((r) => !isPreprocessRequest(r));
-    const nemotron = (opts.provider || "nvidia") === "nvidia" && /nemotron/i.test(opts.model || NEMOTRON);
     for (const r of translation) {
       assert.doesNotMatch(r.body.messages[1].content, /Video context/, "no profile, no context section");
-      assert.deepEqual(r.body.chat_template_kwargs, nemotron ? { enable_thinking: false } : undefined);
+      assert.equal(r.body.chat_template_kwargs, undefined, "no preprocessing, translation body unchanged");
     }
     assert.equal(store["ccCraftTranslateStatus:fixture-video"].preprocessing, null);
   });
@@ -142,6 +141,9 @@ test("preprocessing API failure (no valid key): falls back, translation still ru
   assert.equal(pre.length, 4, "context and chunk, each with one retry");
   assert.deepEqual(pre.map((r) => r.auth), ["Bearer nvapi-a", "Bearer nvapi-b", "Bearer nvapi-a", "Bearer nvapi-b"], "keys rotate on failure");
   assert.equal(sentToTabs[0].message.workfile.cues.length, raw.cues.length);
+  const translation = requests.filter((r) => !isPreprocessRequest(r));
+  assert.ok(translation.length && translation.every((r) => r.body.chat_template_kwargs?.enable_thinking === false), "preprocessing ran (and fell back): thinking off");
+  assert.ok(translation.every((r) => !r.body.messages[1].content.includes("Video context")), "fallback: no profile");
   const status = store["ccCraftTranslateStatus:fixture-video"];
   assert.equal(status.state, "done");
   assert.equal(status.preprocessing.applied, false);

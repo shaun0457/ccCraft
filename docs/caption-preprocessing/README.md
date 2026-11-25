@@ -50,7 +50,7 @@ Untouched: chunking, retry, cache and storage, the overlay, manual import/export
 gained `cues[].words`; manual export strips it, so exported files keep the old format.)
 `callOpenAiCompatible` gained an optional `options` argument; without it the request body is byte-identical to the old
 one (tested). Later change ([word-timed-segmentation.md](word-timed-segmentation.md)): the translation prompt gains a
-"Video context" section when the workfile has a profile, and Nemotron translation requests turn thinking off.
+"Video context" section when the workfile has a profile, and translation requests turn Nemotron thinking off when preprocessing ran.
 
 ## Use, opt out, reload
 

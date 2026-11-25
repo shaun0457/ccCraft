@@ -19,7 +19,8 @@ dropped the per-word offsets (`tOffsetMs`). json3 has them for 647 of the clip's
   the next sentence each last at least `sentenceCutMinSeconds` (1.2 s); a shorter sentence stays with the one before
   it. Reason: on the real clip the model merged most split pieces back together (run 2 below).
 - The translator prompt gets the context profile (topic, terms, proper nouns) of a preprocessed workfile,
-  and Nemotron translation requests send `chat_template_kwargs: {enable_thinking: false}`.
+  and, when preprocessing ran (its gate selected a Nemotron model), translation requests send
+  `chat_template_kwargs: {enable_thinking: false}`; all other translation requests keep the old body (Q1).
 - Out of scope: splitting at commas; splitting cues without word times; splitting where the model adds a
   sentence end that the raw text lacks; other providers' request bodies; the overlay.
 - Edge behaviour: a unit whose rolling prefix was removed keeps no word times (not split); word times that
