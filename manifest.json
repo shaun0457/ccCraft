@@ -21,6 +21,7 @@
   "background": {
     "service_worker": "src/background.js",
     "scripts": [
+      "src/caption-preprocessing.js",
       "src/background.js"
     ]
   },

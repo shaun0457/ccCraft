@@ -179,7 +179,22 @@ function clearStatus() {
   setStatus("");
 }
 
+// Caption preprocessing summary (counts and codes only, set by background.js).
+function preprocessingMessage(pp) {
+  if (!pp) return "";
+  if (pp.applied) {
+    let text = `\n🧩 Automatic captions reconstructed before translation: ${pp.raw_cues} → ${pp.cues} lines`;
+    if (pp.chunks_fallback) text += ` (${pp.chunks_fallback} of ${pp.chunks_total} parts kept as original)`;
+    return text;
+  }
+  return `\n⚠️ Caption preprocessing failed, the original captions were translated instead (${(pp.warnings || []).join(", ") || pp.reason}).`;
+}
+
 function runningMessage(status, prefix) {
+  if (status.phase === "preprocessing") {
+    const part = status.chunksTotal ? ` (part ${status.chunksDone} of ${status.chunksTotal})` : "";
+    return `⏳ Reconstructing automatic captions before translation${part}...\nYou can close this popup — translation continues in the background.`;
+  }
   const percent = status.total ? Math.round((status.done / status.total) * 100) : 0;
   let text = `⏳ ${prefix} ${status.done} of ${status.total} lines translated (${percent}%)`;
 
@@ -202,6 +217,7 @@ function doneMessage(status) {
     text += `\n⚠️ ${status.untranslated} lines could not be translated even after retries (${status.firstError || "unknown error"}). Translate again or try another model.`;
   }
 
+  text += preprocessingMessage(status.preprocessing);
   return text;
 }
 
