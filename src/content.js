@@ -750,8 +750,20 @@ async function makeWorkfile(trackIndex) {
   return buildWorkfile(captured, cueResult);
 }
 
+// Manual export (Download JSON, prompt) keeps the pre-word-times format: per-word times are only for
+// caption preprocessing and would roughly triple the file a user pastes into a model.
+function exportableWorkfile(workfile) {
+  return {
+    ...workfile,
+    cues: (workfile.cues || []).map((cue) => {
+      const { words, ...rest } = cue;
+      return rest;
+    })
+  };
+}
+
 async function downloadWorkfileJson(trackIndex) {
-  const workfile = await makeWorkfile(trackIndex);
+  const workfile = exportableWorkfile(await makeWorkfile(trackIndex));
   const filename = `${safeFilename(workfile.video.title)}-${workfile.source_track.languageCode || "captions"}-to-fa.json`;
 
   downloadText(filename, JSON.stringify(workfile, null, 2), "application/json;charset=utf-8");
@@ -765,7 +777,7 @@ async function downloadWorkfileJson(trackIndex) {
 }
 
 async function downloadPromptTxt(trackIndex) {
-  const workfile = await makeWorkfile(trackIndex);
+  const workfile = exportableWorkfile(await makeWorkfile(trackIndex));
   const filename = `${safeFilename(workfile.video.title)}-prompt.txt`;
 
   const text =

@@ -46,7 +46,8 @@ Steps inside `preprocessWorkfile` (with `callModel` passed in; the module itself
    video context, see [word-timed-segmentation.md](word-timed-segmentation.md)). Any failure (timeout, HTTP error, invalid output, the 180 s
    budget used up) returns the **original workfile object** and shows a warning in the popup.
 
-Untouched: chunking, retry, parsing, cache and storage, the overlay, manual import/export, other providers.
+Untouched: chunking, retry, cache and storage, the overlay, manual import/export, other providers. (`parseJson3` later
+gained `cues[].words`; manual export strips it, so exported files keep the old format.)
 `callOpenAiCompatible` gained an optional `options` argument; without it the request body is byte-identical to the old
 one (tested). Later change ([word-timed-segmentation.md](word-timed-segmentation.md)): the translation prompt gains a
 "Video context" section when the workfile has a profile, and Nemotron translation requests turn thinking off.

@@ -188,3 +188,12 @@ test("a model group is cut at sentence ends when both sides last long enough; a 
   const { workfile: off } = await CP.preprocessWorkfile(raw, { callModel: oneGroup, config: { sentenceCutMinSeconds: 0 } });
   assert.deepEqual(off.cues.map((c) => c.source_ids), [[1, 2, 3, 4]]);
 });
+
+test("manual export drops per-word times and keeps every other field", () => {
+  const wf = workfile([cue(1, 0, 2, "a b", [["a", 0], ["b", 1]]), cue(2, 2, 3, "c")]);
+  const out = plain(parsers.exportableWorkfile(wf));
+  assert.deepEqual(out.cues, [cue(1, 0, 2, "a b"), cue(2, 2, 3, "c")]);
+  assert.equal(out.schema, wf.schema);
+  assert.deepEqual(out.video, wf.video);
+  assert.ok(Array.isArray(wf.cues[0].words), "the input is not mutated");
+});
