@@ -20,7 +20,11 @@
   function toTimedTextUrl(value) {
     try {
       const url = new URL(String(value), location.origin);
-      if (!url.pathname.includes("/api/timedtext")) return null;
+      // Same rule as content.js isAllowedCaptionUrl (content.js is the enforcing check).
+      if (url.protocol !== "https:") return null;
+      if (!["www.youtube.com", "m.youtube.com", "youtube.com"].includes(url.hostname)) return null;
+      if (url.port || url.username || url.password) return null;
+      if (url.pathname !== "/api/timedtext") return null;
       return url;
     } catch (_) {
       return null;

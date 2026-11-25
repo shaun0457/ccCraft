@@ -13,7 +13,10 @@ const NEMOTRON = "nvidia/nemotron-3-ultra-550b-a55b";
 const TRANSLATOR_SYSTEM = "You are a professional subtitle translator. Reply only with the translated numbered lines in the requested format, no explanations.";
 const VIDEO = "fixture-video";
 const lang = { code: "zh-TW", promptName: "Traditional Chinese (Taiwan)", dir: "ltr" };
+const { fakeIndexedDB } = require("./helpers/fake-indexeddb.js");
 const popupSrc = fs.readFileSync(path.join(__dirname, "..", "popup", "popup.js"), "utf8");
+// popup.html loads key-store.js before popup.js.
+const keyStoreSrc = fs.readFileSync(path.join(__dirname, "..", "popup", "key-store.js"), "utf8");
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
 const chat = (content) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }) });
@@ -107,6 +110,8 @@ async function openPopup(status) {
     chrome,
     console,
     URL,
+    Promise,
+    indexedDB: fakeIndexedDB(),
     setTimeout,
     clearTimeout,
     setInterval: (fn) => intervals.push(fn),
@@ -114,6 +119,7 @@ async function openPopup(status) {
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
+  vm.runInContext(keyStoreSrc, ctx, { filename: "key-store.js" });
   vm.runInContext(popupSrc, ctx, { filename: "popup.js" });
   await Promise.all(onLoad.map((fn) => fn()));
   await tick();

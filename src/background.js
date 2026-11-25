@@ -79,6 +79,104 @@ async function setStatus(videoId, status) {
   });
 }
 
+// ---------- Stored subtitle expiry ----------
+
+// Subtitles are kept for 7 days after they were saved (translated or loaded from a file).
+// Per video, the subtitles, their meta and the translation status are removed together.
+const SUBTITLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SUBS_PREFIX = "cccraftSubs:";
+const SUBS_META_PREFIX = "cccraftSubsMeta:";
+const STATUS_PREFIX = "ccCraftTranslateStatus:";
+
+function storedVideoKeys(videoId) {
+  return [SUBS_PREFIX + videoId, SUBS_META_PREFIX + videoId, statusKey(videoId)];
+}
+
+let purgeRunning = null;
+
+// Removes expired videos. Entries saved before expiry existed have no saved_at: they are stamped
+// with the current time once, so they expire 7 days later instead of immediately. A saved_at
+// further in the future than one TTL (clock change) is stamped again.
+function purgeExpiredSubtitles(now = Date.now()) {
+  if (!purgeRunning) {
+    purgeRunning = (async () => {
+      const all = await chrome.storage.local.get(null);
+      const videos = new Map();
+      const entry = (id) => {
+        if (!videos.has(id)) videos.set(id, { subs: false, meta: null, hasMeta: false, status: null });
+        return videos.get(id);
+      };
+      for (const [key, value] of Object.entries(all)) {
+        if (key.startsWith(SUBS_META_PREFIX)) {
+          const e = entry(key.slice(SUBS_META_PREFIX.length));
+          e.hasMeta = true;
+          e.rawMeta = value;
+          e.meta = value && typeof value === "object" ? value : {};
+        } else if (key.startsWith(SUBS_PREFIX)) {
+          entry(key.slice(SUBS_PREFIX.length)).subs = true;
+        } else if (key.startsWith(STATUS_PREFIX)) {
+          entry(key.slice(STATUS_PREFIX.length)).status = value;
+        }
+      }
+
+      const toStamp = [];
+      const toRemove = [];
+      const toRemoveStatus = [];
+      for (const [id, e] of videos) {
+        if (e.subs || e.hasMeta) {
+          const savedAt = Number(e.meta?.saved_at);
+          if (!Number.isFinite(savedAt) || savedAt <= 0 || savedAt > now + SUBTITLE_TTL_MS) toStamp.push(id);
+          else if (now - savedAt >= SUBTITLE_TTL_MS) toRemove.push(id);
+        } else {
+          // A status without subtitles (failed or unfinished translation) expires from its last update.
+          const updatedAt = Number(e.status?.updated_at);
+          if (Number.isFinite(updatedAt) && now - updatedAt >= SUBTITLE_TTL_MS) toRemoveStatus.push(id);
+        }
+      }
+
+      // Re-read just the affected entries: a save or clear in another tab since the snapshot wins.
+      const metaKeys = [...toStamp, ...toRemove].map((id) => SUBS_META_PREFIX + id);
+      const subsKeys = toStamp.map((id) => SUBS_PREFIX + id);
+      const statusKeys = toRemoveStatus.map(statusKey);
+      const current = metaKeys.length || statusKeys.length
+        ? await chrome.storage.local.get([...metaKeys, ...subsKeys, ...statusKeys])
+        : {};
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+      const stamp = {};
+      for (const id of toStamp) {
+        const key = SUBS_META_PREFIX + id;
+        const e = videos.get(id);
+        const stillThere = (key in current) || (SUBS_PREFIX + id) in current;
+        if (stillThere && same(current[key], e.rawMeta)) {
+          stamp[key] = { ...(e.meta || {}), saved_at: now };
+        }
+      }
+      const remove = [];
+      for (const id of toRemove) {
+        if (same(current[SUBS_META_PREFIX + id], videos.get(id).rawMeta)) remove.push(...storedVideoKeys(id));
+      }
+      for (const id of toRemoveStatus) {
+        if (same(current[statusKey(id)], videos.get(id).status)) remove.push(statusKey(id));
+      }
+      if (Object.keys(stamp).length) await chrome.storage.local.set(stamp);
+      if (remove.length) await chrome.storage.local.remove(remove);
+      const removedVideos = remove.filter((k) => k.startsWith(STATUS_PREFIX)).length;
+      return { removed: removedVideos, stamped: Object.keys(stamp).length };
+    })().finally(() => {
+      purgeRunning = null;
+    });
+  }
+  return purgeRunning;
+}
+
+chrome.runtime.onStartup?.addListener(() => {
+  purgeExpiredSubtitles().catch(console.warn);
+});
+chrome.runtime.onInstalled?.addListener(() => {
+  purgeExpiredSubtitles().catch(console.warn);
+});
+
 // context: optional preprocessing profile ({topic, terms, proper_nouns}); without it the prompt is unchanged.
 function buildChunkPrompt(chunkCues, lang, context) {
   const langName = lang?.promptName || "Persian (Farsi)";
@@ -523,6 +621,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     translateWorkfile(message).catch(console.warn);
     sendResponse({ ok: true, started: true });
     return;
+  }
+  if (message?.type === "PURGE_EXPIRED_SUBTITLES") {
+    purgeExpiredSubtitles()
+      .then((result) => sendResponse({ ok: true, ...result }))
+      .catch(() => sendResponse({ ok: false }));
+    return true;
   }
   if (message?.type === "GET_TRANSLATE_STATUS") {
     chrome.storage.local.get(statusKey(message.videoId)).then((result) => {
