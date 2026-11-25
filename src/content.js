@@ -400,10 +400,36 @@ async function loadInitialSettings() {
   applySettings(result.ccCraftSubtitleSettings);
 }
 
+// Asks the background to remove expired subtitles (7 days after saving). Waits at most
+// SUBTITLE_PURGE_WAIT_MS so a sleeping or failing background never blocks the overlay.
+const SUBTITLE_PURGE_WAIT_MS = 3000;
+
+async function requestSubtitlePurge() {
+  let timer;
+  try {
+    await Promise.race([
+      chrome.runtime.sendMessage({ type: "PURGE_EXPIRED_SUBTITLES" }),
+      new Promise((resolve) => {
+        timer = setTimeout(resolve, SUBTITLE_PURGE_WAIT_MS);
+      })
+    ]);
+  } catch (_) {
+    // the cleanup is best effort
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Bumped by every load and every save: a load that is still waiting must not overwrite newer cues.
+let storedCuesGeneration = 0;
+
 async function loadStoredCues() {
+  const generation = ++storedCuesGeneration;
+  await requestSubtitlePurge();
   const key = `cccraftSubs:${getVideoId()}`;
   const metaKey = `cccraftSubsMeta:${getVideoId()}`;
   const result = await chrome.storage.local.get([key, metaKey]);
+  if (generation !== storedCuesGeneration) return;
   faCues = Array.isArray(result[key]) ? result[key] : [];
   subsDir = result[metaKey]?.dir === "ltr" ? "ltr" : "rtl";
   origLang = result[metaKey]?.srcLang || origLang;
@@ -821,6 +847,7 @@ function extractTranslatedCues(workfile) {
 
 async function loadTranslatedJson(workfile, dir) {
   const cues = extractTranslatedCues(workfile);
+  storedCuesGeneration++;
 
   faCues = cues;
   subsDir = dir === "ltr" ? "ltr" : "rtl";
@@ -832,7 +859,8 @@ async function loadTranslatedJson(workfile, dir) {
   const api = await chrome.storage.local.get("ccCraftApiSettings");
   userLang = api?.ccCraftApiSettings?.targetLang || userLang;
 
-  await chrome.storage.local.set({ [key]: cues, [metaKey]: { dir: subsDir, srcLang: origLang } });
+  await chrome.storage.local.set({ [key]: cues, [metaKey]: { dir: subsDir, srcLang: origLang, saved_at: Date.now() } });
+  requestSubtitlePurge();
 
   // اگر نمایش زیرنویس خاموش بود، روشن کن تا کاربر فکر نکند زیرنویس نیامده
   if (!settings.enabled) {
@@ -856,10 +884,11 @@ async function loadTranslatedJson(workfile, dir) {
 }
 
 async function clearSubs() {
+  storedCuesGeneration++;
   faCues = [];
 
-  const key = `cccraftSubs:${getVideoId()}`;
-  await chrome.storage.local.remove(key);
+  const videoId = getVideoId();
+  await chrome.storage.local.remove([`cccraftSubs:${videoId}`, `cccraftSubsMeta:${videoId}`, `ccCraftTranslateStatus:${videoId}`]);
 
   const overlay = document.getElementById("cccraft-subtitle-overlay");
   if (overlay) setOverlayText(overlay, "", "");
