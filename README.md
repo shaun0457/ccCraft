@@ -87,13 +87,14 @@ Get an API key from:
 ## Privacy
 
 - API keys are stored only in your browser's local storage (`chrome.storage.local`) and are sent directly to the chosen AI provider. They are never transmitted to any third-party server.
-- Subtitle text is sent to the AI provider for translation and to Google Translate for word lookup. No other data is collected or transmitted.
+- Subtitle text is sent to the AI provider for translation and to Google Translate for word lookup. With caption preprocessing (automatic tracks + NVIDIA Nemotron), the same text is also sent to NVIDIA in a few extra requests before translation. No other data is collected or transmitted.
 - The extension does not require an account and does not track usage.
 
 ## How it works
 
 1. **Caption capture:** A content script injected into the page's MAIN world hooks `fetch` and `XMLHttpRequest` to intercept the real `/api/timedtext` URL that the YouTube player uses to fetch captions. This avoids the empty-response problem that occurs when requesting caption URLs directly from `ytInitialPlayerResponse` (which often lacks a valid playback token).
 2. **Workfile generation:** Captured caption data is parsed into a structured JSON workfile (schema `cccraft-subtitle-v1.1`) with cues containing `id`, `start`, `end`, `source` (original text), and `fa` (translation field).
+   - **Caption preprocessing (automatic tracks with an NVIDIA Nemotron model only):** before translation, the model restores punctuation, groups fragmented auto-caption lines into sentences and fixes obvious, context-supported recognition errors. The word coverage and the timing are checked by code, and anything invalid falls back to the original captions. Manual tracks, other providers and other models are unchanged. Details, opt-out and evaluation: [docs/caption-preprocessing](docs/caption-preprocessing/README.md).
 3. **AI translation:** The workfile is split into chunks of 50 lines. Chunks are sent to the AI provider in parallel (up to 3 concurrent requests). Each chunk uses a numbered-line prompt format (`id| text`) for efficiency — roughly half the output tokens of JSON. If a chunk fails, the next API key is tried automatically. Lines that remain untranslated after the first pass are retried in smaller chunks.
 4. **Overlay rendering:** Translated cues are stored in `chrome.storage.local` and rendered as an absolute-positioned overlay on the video player. The overlay updates every frame via `requestAnimationFrame`, showing the active cue at the current playback time.
 5. **Word lookup:** When language learning is enabled, the original subtitle text is tokenized into clickable word spans. Hovering sends a translation request to the Google Translate API (via the background service worker) and displays the result in a tooltip. Clicking plays pronunciation audio from Google Translate TTS.
@@ -113,6 +114,7 @@ ccCraft/
 ├── manifest.json          # MV3 manifest (cross-browser)
 ├── src/
 │   ├── background.js       # Service worker: AI translation, model listing, word lookup
+│   ├── caption-preprocessing.js # Auto-caption reconstruction before translation (loaded by background.js)
 │   ├── content.js          # Content script: caption extraction, overlay rendering, learning events
 │   ├── inject-main.js      # MAIN-world script: fetch/XHR hooks for caption URL capture
 │   └── overlay.css         # Subtitle overlay and tooltip styles
@@ -120,8 +122,17 @@ ccCraft/
 │   ├── popup.html          # Extension popup UI
 │   ├── popup.js            # Popup logic: settings, translation control, polling
 │   └── popup.css           # Popup styles
+├── tests/                  # Node tests (no dependencies): node --test tests/*.test.js
 └── README.md
 ```
+
+## Tests
+
+Requires Node 18+; there are no dependencies to install.
+
+- `node --test tests/*.test.js`: unit and integration tests for caption preprocessing (mock model, no API key needed).
+- `node tests/preprocess-demo.js`: a before/after comparison on the bundled synthetic clip, using scripted model replies.
+  With `NVIDIA_API_KEY` set, it calls the real Nemotron for preprocessing and translates both versions with the extension's translator.
 
 ## License
 

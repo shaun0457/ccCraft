@@ -1,0 +1,35 @@
+{
+  "_note": "Scripted replies for tests/preprocess-demo.js in mock mode. Written by hand to resemble a model reply; NOT real Nemotron output. Only valid for auto-captions-technical.json3.",
+  "context": {
+    "topic": "Setting up project documentation and a GitHub Actions workflow for a software repository.",
+    "terms": ["vision.md", "roadmap", "README", "GitHub Actions", ".github/workflows", "pull request", "npm install", "npm test", "pytest", "Python"],
+    "proper_nouns": ["GitHub"],
+    "asr_confusions": [
+      { "heard": "get hub", "likely": "GitHub" },
+      { "heard": "pie test", "likely": "pytest" },
+      { "heard": "road map", "likely": "roadmap" }
+    ]
+  },
+  "reconstruction": [
+    {
+      "groups": [
+        { "ids": [1, 2], "text": "So today I want to walk you through how we set up the project docs.", "corrections": [] },
+        { "ids": [3, 4], "text": "So if you look at the vision.md here. And if you're going to", "corrections": [] },
+        { "ids": [5, 6], "text": "build something with it, you need to keep this file short.", "corrections": [] },
+        { "ids": [7, 8], "text": "The second file is the roadmap, which lists the milestones for version 2.1,", "corrections": [{ "original": "road map", "replacement": "roadmap", "reason": "single word in software planning" }] },
+        { "ids": [9, 10], "text": "and we keep it in the repo next to the README.", "corrections": [] },
+        { "ids": [11], "text": "[Music]", "corrections": [] },
+        { "ids": [12, 13], "text": ">> Quick question: does that work with GitHub Actions?", "corrections": [{ "original": "get hub", "replacement": "GitHub", "reason": "product name; GitHub is mentioned later" }] },
+        { "ids": [14, 15], "text": ">> Yes, it does. You just add a workflow file under .github/workflows,", "corrections": [{ "original": "dot github slash workflows", "replacement": ".github/workflows", "reason": "spoken path" }] },
+        { "ids": [16], "text": "and it runs on every pull request.", "corrections": [] },
+        { "ids": [17, 18], "text": "You don't need to install anything else. It's not that hard.", "corrections": [] },
+        { "ids": [19, 20], "text": "The first step is to run npm install, then npm test, and if the tests pass", "corrections": [] },
+        { "ids": [21, 22], "text": "and pytest for the Python part, you can push.", "corrections": [{ "original": "pie test", "replacement": "pytest", "reason": "Python test runner" }] },
+        { "ids": [23], "text": "No, no, no, don't push to main directly.", "corrections": [] },
+        { "ids": [24], "text": "Open a pull request instead.", "corrections": [] },
+        { "ids": [25, 26], "text": "Thank you. Thank you.", "corrections": [] },
+        { "ids": [27], "text": "See you in the next video.", "corrections": [] }
+      ]
+    }
+  ]
+}
