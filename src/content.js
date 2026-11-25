@@ -442,6 +442,28 @@ function secondsToTimestamp(seconds) {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
 }
 
+// Caption text is fetched with the user's YouTube cookies, and the URL comes from the page
+// (the MAIN-world bridge can be spoofed by any script on the page). Only YouTube's own
+// timedtext endpoint is allowed.
+const CAPTION_HOSTS = new Set(["www.youtube.com", "m.youtube.com", "youtube.com"]);
+
+function isAllowedCaptionUrl(urlValue) {
+  let url;
+  try {
+    url = new URL(String(urlValue));
+  } catch (_) {
+    return false;
+  }
+  return (
+    url.protocol === "https:" &&
+    CAPTION_HOSTS.has(url.hostname) &&
+    url.port === "" &&
+    url.username === "" &&
+    url.password === "" &&
+    url.pathname === "/api/timedtext"
+  );
+}
+
 function urlWithFormat(urlValue, fmt) {
   const url = new URL(urlValue);
   if (fmt) url.searchParams.set("fmt", fmt);
@@ -450,6 +472,7 @@ function urlWithFormat(urlValue, fmt) {
 
 async function readCaptionText(url, fmt) {
   const finalUrl = fmt ? urlWithFormat(url, fmt) : url;
+  if (!isAllowedCaptionUrl(finalUrl)) throw new Error("caption URL is not a YouTube timedtext URL");
 
   const response = await fetch(finalUrl, {
     credentials: "include",
