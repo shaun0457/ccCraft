@@ -631,11 +631,11 @@ const DEFAULT_SUB_SETTINGS = {
 };
 
 // Same mapping as subtitleModeOf in src/content.js: settings saved before subtitleMode existed
-// map showOriginal on to "bilingual" and off to "translation".
+// map to what they showed: the original line was on when showOriginal or word lookup was on.
 function subtitleModeOf(s) {
   const mode = s?.subtitleMode;
   if (mode === "translation" || mode === "bilingual" || mode === "original") return mode;
-  return s?.showOriginal ? "bilingual" : "translation";
+  return s?.showOriginal || s?.languageLearning ? "bilingual" : "translation";
 }
 
 function selectedMode() {

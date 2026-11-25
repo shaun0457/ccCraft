@@ -122,4 +122,4 @@ function workfileFromJson3(name, kind = "asr") {
   };
 }
 
-module.exports = { loadContentParsers, loadBackground, readFixture, workfileFromJson3 };
+module.exports = { extractFunction, loadContentParsers, loadBackground, readFixture, workfileFromJson3 };

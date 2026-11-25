@@ -100,25 +100,37 @@ function injectOverlay() {
   return overlay;
 }
 
-// "translation" | "bilingual" | "original". Settings saved before subtitleMode existed map
-// showOriginal on to "bilingual" and off to "translation".
+// "translation" | "bilingual" | "original". Settings saved before subtitleMode existed map to
+// what they showed: the original line was on screen when showOriginal or word lookup was on.
 function subtitleModeOf(s) {
   const mode = s?.subtitleMode;
   if (mode === "translation" || mode === "bilingual" || mode === "original") return mode;
-  return s?.showOriginal ? "bilingual" : "translation";
+  return s?.showOriginal || s?.languageLearning ? "bilingual" : "translation";
 }
 
-// What the overlay shows for a cue: { main, orig, origOnly }. Word lookup needs the original
-// line, so "translation" with lookup on shows both lines (as the old checkbox did). "original"
-// falls back to the translation for a cue that has no original text (an imported file without it).
+// What the overlay shows for a cue: { main, orig, origOnly }. The selected mode always wins.
+// "original" falls back to the translation for a cue that has no original text (an imported
+// file without it). In the other modes a cue with no translation shows nothing, so YouTube's
+// own captions stay visible (as before subtitleMode).
 function overlayLines(cue, s) {
-  if (!cue) return { main: "", orig: "", origOnly: false };
+  const none = { main: "", orig: "", origOnly: false };
+  if (!cue) return none;
   const text = cue.text || "";
   const orig = cue.orig || "";
   const mode = subtitleModeOf(s);
   if (mode === "original") return orig ? { main: "", orig, origOnly: true } : { main: text, orig: "", origOnly: false };
-  if (mode === "bilingual" || s?.languageLearning) return { main: text, orig, origOnly: false };
-  return { main: text, orig: "", origOnly: false };
+  if (!text) return none;
+  return { main: text, orig: mode === "bilingual" ? orig : "", origOnly: false };
+}
+
+// Puts a cue on the overlay for the current settings; returns whether any text is shown.
+function renderCue(overlay, cue) {
+  const lines = overlayLines(cue, settings);
+  setOverlayText(overlay, lines.main, lines.orig);
+  overlay.classList.toggle("orig-only", lines.origOnly);
+  const shown = Boolean(lines.main || lines.orig);
+  overlay.classList.toggle("empty", !shown);
+  return shown;
 }
 
 function setOverlayText(overlay, main, orig) {
@@ -395,13 +407,8 @@ function renderLoop() {
         overlay.classList.add("empty");
       } else {
         const cue = findActiveCue(video.currentTime);
-        const lines = overlayLines(cue, settings);
-        setOverlayText(overlay, lines.main, lines.orig);
-        overlay.classList.toggle("orig-only", lines.origOnly);
         // وقتی متنی نیست، کل باکس مخفی شود (نه فقط بکگراند خالی)
-        const shown = Boolean(lines.main || lines.orig);
-        overlay.classList.toggle("empty", !shown);
-        showingText = shown;
+        showingText = renderCue(overlay, cue);
       }
 
       // CC خود یوتیوب فقط همان لحظه‌ای مخفی شود که زیرنویس ترجمه‌شده روی صفحه است
