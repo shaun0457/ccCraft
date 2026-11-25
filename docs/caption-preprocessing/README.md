@@ -150,6 +150,8 @@ runs and handled by the deterministic checks:
   reconstructed.
 - Languages that don't separate words with spaces (for example Chinese or Japanese automatic captions) are not supported.
   The gate does not exclude them. Words are compared by whitespace, so such text is mostly kept as raw (no words lost), and
-  grouped cues are joined with spaces.
+  grouped cues are joined with spaces. In other non-English automatic captions, punctuation outside the fixed set (`¿`,
+  `¡`, `„`, `،`, `؟`, `--` used as a dash) is treated as an unlisted change and reverted. Such groups often keep their raw
+  text, so reconstruction helps less there, though nothing is lost or reordered.
 - The plan's known risk is unchanged and not addressed here: `parseTranslationsPositional` assigns ids by position. Fewer,
   longer cues are not claimed to fix it.
