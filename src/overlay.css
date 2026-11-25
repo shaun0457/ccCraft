@@ -32,8 +32,17 @@
   margin-top: 2px;
 }
 
-#cccraft-subtitle-overlay .cccraft-orig.hidden {
+#cccraft-subtitle-overlay .cccraft-orig.hidden,
+#cccraft-subtitle-overlay .cccraft-main.hidden {
   display: none;
+}
+
+/* Original only: the original line takes the main line's size and weight. */
+#cccraft-subtitle-overlay.orig-only .cccraft-orig {
+  font-size: 1em;
+  line-height: 1.65;
+  opacity: 1;
+  margin-top: 0;
 }
 
 .html5-video-player.cccraft-on .ytp-caption-window-container,

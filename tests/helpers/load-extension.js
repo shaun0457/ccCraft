@@ -29,7 +29,7 @@ const ENTITIES = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"", "&#39
 
 function loadContentParsers() {
   const source = fs.readFileSync(path.join(SRC, "content.js"), "utf8");
-  const names = ["decodeHtml", "cleanText", "secondsToTimestamp", "json3WordTimes", "parseJson3", "fixCueTiming", "exportableWorkfile"];
+  const names = ["decodeHtml", "cleanText", "secondsToTimestamp", "json3WordTimes", "parseJson3", "fixCueTiming", "exportableWorkfile", "subtitleModeOf", "overlayLines"];
   const documentStub = {
     createElement() {
       let value = "";

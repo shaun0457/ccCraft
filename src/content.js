@@ -8,6 +8,7 @@ let settings = {
   enabled: true,
   color: "#ffffff",
   showOriginal: false,
+  subtitleMode: "translation",
   languageLearning: false
 };
 
@@ -99,6 +100,27 @@ function injectOverlay() {
   return overlay;
 }
 
+// "translation" | "bilingual" | "original". Settings saved before subtitleMode existed map
+// showOriginal on to "bilingual" and off to "translation".
+function subtitleModeOf(s) {
+  const mode = s?.subtitleMode;
+  if (mode === "translation" || mode === "bilingual" || mode === "original") return mode;
+  return s?.showOriginal ? "bilingual" : "translation";
+}
+
+// What the overlay shows for a cue: { main, orig, origOnly }. Word lookup needs the original
+// line, so "translation" with lookup on shows both lines (as the old checkbox did). "original"
+// falls back to the translation for a cue that has no original text (an imported file without it).
+function overlayLines(cue, s) {
+  if (!cue) return { main: "", orig: "", origOnly: false };
+  const text = cue.text || "";
+  const orig = cue.orig || "";
+  const mode = subtitleModeOf(s);
+  if (mode === "original") return orig ? { main: "", orig, origOnly: true } : { main: text, orig: "", origOnly: false };
+  if (mode === "bilingual" || s?.languageLearning) return { main: text, orig, origOnly: false };
+  return { main: text, orig: "", origOnly: false };
+}
+
 function setOverlayText(overlay, main, orig) {
   let mainEl = overlay.querySelector(".cccraft-main");
   let origEl = overlay.querySelector(".cccraft-orig");
@@ -120,6 +142,7 @@ function setOverlayText(overlay, main, orig) {
     mainEl.dataset.text = mainText;
     mainEl.textContent = mainText;
   }
+  mainEl.classList.toggle("hidden", !mainText);
 
   const origText = orig || "";
   const origKey = (settings.languageLearning ? "1|" : "0|") + origText;
@@ -309,6 +332,7 @@ function applySettings(nextSettings) {
     enabled: Boolean(nextSettings?.enabled ?? settings.enabled),
     color: String(nextSettings?.color ?? settings.color ?? "#ffffff"),
     showOriginal: Boolean(nextSettings?.showOriginal ?? settings.showOriginal),
+    subtitleMode: subtitleModeOf(nextSettings && (nextSettings.subtitleMode || "showOriginal" in nextSettings) ? nextSettings : settings),
     languageLearning: Boolean(nextSettings?.languageLearning ?? settings.languageLearning)
   };
 
@@ -371,12 +395,13 @@ function renderLoop() {
         overlay.classList.add("empty");
       } else {
         const cue = findActiveCue(video.currentTime);
-        const text = cue ? cue.text : "";
-        const orig = (settings.showOriginal || settings.languageLearning) && cue ? cue.orig || "" : "";
-        setOverlayText(overlay, text, orig);
+        const lines = overlayLines(cue, settings);
+        setOverlayText(overlay, lines.main, lines.orig);
+        overlay.classList.toggle("orig-only", lines.origOnly);
         // وقتی متنی نیست، کل باکس مخفی شود (نه فقط بکگراند خالی)
-        overlay.classList.toggle("empty", !text);
-        showingText = Boolean(text);
+        const shown = Boolean(lines.main || lines.orig);
+        overlay.classList.toggle("empty", !shown);
+        showingText = shown;
       }
 
       // CC خود یوتیوب فقط همان لحظه‌ای مخفی شود که زیرنویس ترجمه‌شده روی صفحه است
