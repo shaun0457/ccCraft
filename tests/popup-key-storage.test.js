@@ -139,6 +139,20 @@ test("typing a key saves it to IndexedDB only, and the next popup shows it", asy
   assert.equal(next.el("apiKeyInput").value, "nvapi-typed");
 });
 
+test("IndexedDB write fails on save: warning shown, saved keys kept, nothing in storage.local", async () => {
+  // txMode "error" lets reads succeed and makes every write fail.
+  const idb = fakeIndexedDB({ txMode: "error" });
+  const p = loadPopup({ idb, stored: { ccCraftApiSettings: { provider: "gpt", modelLists: { gpt: ["m1"] } } } });
+  await p.open();
+  assert.doesNotMatch(p.el("status").textContent, WARNING, "load succeeded, no warning yet");
+  p.el("targetLangSelect").value = "de";
+  await p.el("targetLangSelect").fire("change");
+  await tick();
+  assert.match(p.el("status").textContent, WARNING);
+  assert.equal(p.data.ccCraftApiSettings.targetLang, "de");
+  assert.equal("keys" in p.data.ccCraftApiSettings, false);
+});
+
 test("IndexedDB unavailable: warning shown, settings saved, no key written anywhere", async () => {
   const p = loadPopup({
     idb: fakeIndexedDB({ openMode: "error" }),
