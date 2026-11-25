@@ -133,6 +133,8 @@ Requires Node 18+; there are no dependencies to install.
 - `node --test tests/*.test.js`: unit and integration tests for caption preprocessing (mock model, no API key needed).
 - `node tests/preprocess-demo.js`: a before/after comparison on the bundled synthetic clip, using scripted model replies.
   With `NVIDIA_API_KEY` set, it calls the real Nemotron for preprocessing and translates both versions with the extension's translator.
+- `node tests/word-timing-eval.js <file.json3> --out <dir>` (needs `NVIDIA_API_KEY`): A/B of the sentence-end split and translator
+  context on a real caption file, with threshold checks. Keep the file and the output outside the repo.
 
 ## License
 

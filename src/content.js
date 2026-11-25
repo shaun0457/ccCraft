@@ -464,6 +464,23 @@ async function readCaptionText(url, fmt) {
   return text;
 }
 
+// Per-segment start times of an automatic json3 line: [[text, seconds], ...]. Kept only when the
+// segments carry offsets and their texts, joined with spaces, equal the cue text; otherwise null.
+// Caption preprocessing uses them to split a line at a sentence end without inventing times.
+function json3WordTimes(segs, start, source) {
+  if (!Array.isArray(segs) || segs.length < 2 || !segs.some((seg) => seg && seg.tOffsetMs != null)) return null;
+  const words = [];
+  for (const seg of segs) {
+    const text = cleanText(seg?.utf8 || "");
+    if (!text) continue;
+    const offset = Number(seg.tOffsetMs || 0);
+    if (!Number.isFinite(offset) || offset < 0) return null;
+    words.push([text, Number((start + offset / 1000).toFixed(3))]);
+  }
+  if (words.length < 2 || words.map((w) => w[0]).join(" ") !== source) return null;
+  return words;
+}
+
 function parseJson3(text) {
   let data;
 
@@ -492,7 +509,7 @@ function parseJson3(text) {
 
     const end = Number((start + duration).toFixed(3));
 
-    cues.push({
+    const cue = {
       id: id++,
       start,
       end,
@@ -500,7 +517,10 @@ function parseJson3(text) {
       end_time: secondsToTimestamp(end),
       source,
       fa: ""
-    });
+    };
+    const words = json3WordTimes(event.segs, start, source);
+    if (words) cue.words = words;
+    cues.push(cue);
   }
 
   if (!cues.length) throw new Error("json3 has no cues");
