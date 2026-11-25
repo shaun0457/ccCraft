@@ -86,7 +86,7 @@ Get an API key from:
 
 ## Privacy
 
-- API keys are stored only in your browser's local storage (`chrome.storage.local`) and are sent directly to the chosen AI provider. They are never transmitted to any third-party server.
+- API keys are stored only in your browser, in the extension's own IndexedDB, which only the extension's popup and background can open (the script that runs on YouTube pages cannot). Other settings and the translated subtitles stay in `chrome.storage.local`. Keys saved by an older version are moved there the next time you open the popup. In a private window, or if the browser blocks that storage, the popup warns you and does not save keys: a key entered there works until the popup closes, and keys saved earlier are not changed. Keys are sent directly to the chosen AI provider and are never transmitted to any third-party server.
 - Subtitle text is sent to the AI provider for translation and to Google Translate for word lookup. No other data is collected or transmitted.
 - The extension does not require an account and does not track usage.
 

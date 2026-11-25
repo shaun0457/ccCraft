@@ -167,10 +167,17 @@ let apiSettings = {
 
 // ---------- Status banner (top of the popup) ----------
 
+// Set while API keys are not being saved (see popup/key-store.js); it is appended to every
+// status message so other messages cannot hide it.
+let keyStoreWarning = "";
+let lastStatus = ["", false, false];
+
 function setStatus(text, error = false, busy = false) {
-  statusEl.textContent = text || "";
-  statusEl.classList.toggle("show", Boolean(text));
-  statusEl.classList.toggle("error", Boolean(error));
+  lastStatus = [text, error, busy];
+  const full = [text, keyStoreWarning].filter(Boolean).join("\n\n");
+  statusEl.textContent = full;
+  statusEl.classList.toggle("show", Boolean(full));
+  statusEl.classList.toggle("error", Boolean(error || (keyStoreWarning && !text)));
   statusEl.classList.toggle("ok", !error);
   statusEl.classList.toggle("busy", Boolean(busy));
 }
@@ -271,8 +278,25 @@ async function loadTracks({ quiet = false } = {}) {
 
 // ---------- API settings & model menu ----------
 
+// API keys are kept in the extension's IndexedDB (popup/key-store.js), not in
+// chrome.storage.local, because the content script on every YouTube page can read the latter.
+const apiSettingsStore = CcCraftKeyStore.createApiSettingsStore({
+  storage: chrome.storage.local,
+  secretStore: CcCraftKeyStore.createIdbStore(globalThis.indexedDB),
+  incognito: Boolean(chrome.extension && chrome.extension.inIncognitoContext)
+});
+const KEY_STORE_WARNING =
+  "⚠️ API keys can't be saved in this window (private window, or the browser blocked the extension's storage). " +
+  "A key you enter now works until the popup closes; keys saved earlier are not changed.";
+function warnKeyStore() {
+  keyStoreWarning = KEY_STORE_WARNING;
+  setStatus(...lastStatus);
+}
+
+// Saves run one at a time inside apiSettingsStore; a save before loading finished is skipped.
 async function persistApiSettings() {
-  await chrome.storage.local.set({ ccCraftApiSettings: apiSettings });
+  const result = await apiSettingsStore.save(apiSettings);
+  if (result.saved && !result.secure) warnKeyStore();
 }
 
 function populateModelMenu(provider) {
@@ -316,14 +340,15 @@ function syncProviderFields() {
 }
 
 async function loadApiSettings() {
-  const result = await chrome.storage.local.get({ ccCraftApiSettings: apiSettings });
-  const stored = result.ccCraftApiSettings || {};
+  const loaded = await apiSettingsStore.load();
+  const stored = loaded.settings;
+  if (!loaded.secure) warnKeyStore();
 
   apiSettings = {
     provider: stored.provider || "gemini",
     targetLang: stored.targetLang || "fa",
     models: { ...DEFAULT_MODELS, ...(stored.models || {}) },
-    keys: { gemini: "", gpt: "", nvidia: "", qwen: "", ...(stored.keys || {}) },
+    keys: { gemini: "", gpt: "", nvidia: "", qwen: "", ...loaded.keys },
     modelLists: { gemini: [], gpt: [], nvidia: [], qwen: [], ...(stored.modelLists || {}) }
   };
 
