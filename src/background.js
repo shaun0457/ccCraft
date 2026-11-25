@@ -1,5 +1,10 @@
 // ccCraft - background service worker
 
+// Chrome loads the preprocessing module here; Firefox loads it first via manifest "scripts".
+if (typeof importScripts === "function" && !globalThis.CaptionPreprocessing) {
+  importScripts("caption-preprocessing.js");
+}
+
 const CHUNK_SIZE = 50;
 const RETRY_ROUNDS = 2;
 const RETRY_CHUNK_SIZE = 20;
@@ -220,19 +225,22 @@ async function callGemini(apiKey, model, prompt) {
   return text;
 }
 
-async function callOpenAiCompatible(provider, apiKey, model, prompt) {
+// options is used only by caption preprocessing; translation calls pass none and send the same body as before.
+async function callOpenAiCompatible(provider, apiKey, model, prompt, options = {}) {
   const config = PROVIDERS[provider];
   const body = {
     model,
-    temperature: 0.2,
-    max_tokens: provider === "nvidia" ? 4096 : 8192,
+    temperature: options.temperature ?? 0.2,
+    max_tokens: options.maxTokens ?? (provider === "nvidia" ? 4096 : 8192),
     messages: [
       {
         role: "system",
-        content: "You are a professional subtitle translator. Reply only with the translated numbered lines in the requested format, no explanations."
+        content: options.system ??
+          "You are a professional subtitle translator. Reply only with the translated numbered lines in the requested format, no explanations."
       },
       { role: "user", content: prompt }
-    ]
+    ],
+    ...(options.extraBody || {})
   };
   const response = await fetchWithTimeout(config.baseUrl + "/chat/completions", {
     method: "POST",
@@ -311,8 +319,58 @@ async function translateChunk(provider, keyRing, model, chunkCues, lang) {
   throw lastError;
 }
 
-async function translateWorkfile({ workfile, provider, apiKey, model, tabId, lang }) {
-  const videoId = workfile?.video?.id || "unknown-video";
+// ---------- Caption preprocessing (automatic tracks + Nemotron only) ----------
+
+// Opt-out: chrome.storage.local.set({ ccCraftCaptionPreprocessing: { enabled: false } })
+const PREPROCESSING_SETTING_KEY = "ccCraftCaptionPreprocessing";
+
+// Returns the workfile to translate: the reconstructed one, or the original on bypass/failure.
+// Never throws.
+async function preprocessForTranslation(workfile, { provider, apiKey, model, videoId }) {
+  const CP = globalThis.CaptionPreprocessing;
+  if (!CP) return { workfile, summary: null };
+  try {
+    const stored = await chrome.storage.local.get(PREPROCESSING_SETTING_KEY).catch(() => ({}));
+    const enabled = stored?.[PREPROCESSING_SETTING_KEY]?.enabled !== false;
+    if (!CP.shouldPreprocess({ workfile, provider, model, enabled }).run) return { workfile, summary: null };
+
+    const keyRing = makeKeyRing(apiKey);
+    const callModel = async (prompt, options) => {
+      try {
+        return await callOpenAiCompatible(provider, keyRing.current(), model, prompt, {
+          ...options,
+          // Nemotron reasoning tokens count against max_tokens; preprocessing needs the JSON only.
+          extraBody: { chat_template_kwargs: { enable_thinking: false } }
+        });
+      } catch (err) {
+        keyRing.rotate();
+        throw err;
+      }
+    };
+    const total = workfile.cues.length;
+    await setStatus(videoId, { state: "running", phase: "preprocessing", done: 0, total });
+    const { workfile: result, report } = await CP.preprocessWorkfile(workfile, {
+      callModel,
+      onProgress: (p) => setStatus(videoId, {
+        state: "running",
+        phase: "preprocessing",
+        done: 0,
+        total,
+        chunksDone: p.chunksDone || 0,
+        chunksTotal: p.chunksTotal || 0
+      })
+    });
+    return { workfile: result, summary: CP.summarizeReport(report) };
+  } catch (_) {
+    return { workfile, summary: { applied: false, reason: "fallback_error", warnings: ["internal_error"] } };
+  }
+}
+
+async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey, model, tabId, lang }) {
+  const videoId = originalWorkfile?.video?.id || "unknown-video";
+  const { workfile, summary: preprocessing } = await preprocessForTranslation(originalWorkfile, {
+    provider, apiKey, model, videoId
+  });
   const cues = Array.isArray(workfile?.cues) ? workfile.cues : [];
   if (!cues.length) {
     await setStatus(videoId, { state: "error", error: "There are no subtitle lines to translate." });
@@ -411,14 +469,16 @@ async function translateWorkfile({ workfile, provider, apiKey, model, tabId, lan
       total: cues.length,
       count: res.count,
       untranslated,
-      firstError: untranslated ? (chunkErrors[chunkErrors.length - 1] || null) : null
+      firstError: untranslated ? (chunkErrors[chunkErrors.length - 1] || null) : null,
+      preprocessing
     });
   } catch (err) {
     await setStatus(videoId, {
       state: "error",
       done,
       total: cues.length,
-      error: err.message
+      error: err.message,
+      preprocessing
     });
   }
 }

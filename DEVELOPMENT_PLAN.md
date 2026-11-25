@@ -1,6 +1,6 @@
 # ccCraft — minimal caption preprocessing layer
 
-Status: implementation pending. This revised plan supersedes the previous broader plan and tickets. Target: existing Chrome extension + NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b).
+Status: T1–T3 implemented. Results and open items (browser test and a real-clip test not run yet): docs/caption-preprocessing/README.md. This revised plan supersedes the previous broader plan and tickets. Target: existing Chrome extension + NVIDIA Nemotron 3 Ultra (nvidia/nemotron-3-ultra-550b-a55b).
 
 ## Goal / intent / scope
 Goal: turn fragmented YouTube automatic captions into coherent, readable source-language subtitle segments before translation, so the resulting Taiwan Traditional Chinese subtitles are natural and semantically faithful.
