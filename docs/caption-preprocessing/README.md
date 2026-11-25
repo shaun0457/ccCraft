@@ -33,20 +33,24 @@ Steps inside `preprocessWorkfile` (with `callModel` passed in; the module itself
      within 20% of the group's words. Every other difference is reverted to the raw words. The output's words are therefore
      always the raw words plus accepted corrections. A group with more than 34% unlisted changes keeps its raw text.
    - Words the model wrote into a neighbouring group are mapped back to their own cue, and the two groups are merged.
-   - Cues are never split, because `parseJson3` discards word offsets (see T1). Groups are cut at cue boundaries to respect
+   - Before grouping, a cue with json3 word times is split after each inner sentence end, at the next word's real time
+     ([word-timed-segmentation.md](word-timed-segmentation.md)); cues without word times are never split. Groups are cut at cue boundaries to respect
      a 7 s / 140-character limit, plus a hard break at any > 0.7 s gap, `>>` speaker change or `[sound]` tag. Cut points
      prefer sentence ends, then clause punctuation, then the most even split.
    - Each merged cue takes the first raw start and the last raw end. Ids are renumbered 1..n, and timestamps use the same
-     format as `content.js`. The final check covers every raw id exactly once and in order, plus finite, ordered,
-     non-overlapping times.
+     format as `content.js`. The final check covers every raw id in order (a split cue's id may appear in consecutive
+     output cues, and nowhere else), plus finite, ordered, non-overlapping times.
 5. **Output**: the same `cccraft-subtitle-v1.1` workfile, as a clone. Two additive fields are added: `cues[].source_ids`
    (the raw mapping) and `caption_preprocessing` (corrections and reverted or rejected edits, for review).
-   `extractTranslatedCues` and `buildChunkPrompt` ignore both. Any failure (timeout, HTTP error, invalid output, the 180 s
+   `extractTranslatedCues` ignores both; `buildChunkPrompt` reads only `caption_preprocessing.profile` (reference-only
+   video context, see [word-timed-segmentation.md](word-timed-segmentation.md)). Any failure (timeout, HTTP error, invalid output, the 180 s
    budget used up) returns the **original workfile object** and shows a warning in the popup.
 
-Untouched: the translation prompt, chunking, retry, parsing, cache and storage, the overlay, manual import/export, other
-providers. `callOpenAiCompatible` gained an optional `options` argument; without it the request body is byte-identical to
-the old one (tested).
+Untouched: chunking, retry, cache and storage, the overlay, manual import/export, other providers. (`parseJson3` later
+gained `cues[].words`; manual export strips it, so exported files keep the old format.)
+`callOpenAiCompatible` gained an optional `options` argument; without it the request body is byte-identical to the old
+one (tested). Later change ([word-timed-segmentation.md](word-timed-segmentation.md)): the translation prompt gains a
+"Video context" section when the workfile has a profile, and translation requests turn Nemotron thinking off when preprocessing ran.
 
 ## Use, opt out, reload
 
@@ -73,7 +77,8 @@ the old one (tested).
   `parseJson3` and `fixCueTiming` extracted from content.js. Baseline output: `tests/fixtures/auto-captions-technical.baseline.json`.
 - Findings that shaped the design:
   - `parseJson3` joins `segs` and drops `tOffsetMs`, so no word timing is available, and splitting a cue mid-text would mean
-    making up timestamps. Chosen: cues stay whole, and no parser change.
+    making up timestamps. Chosen: cues stay whole, and no parser change. (Superseded: `parseJson3` now keeps the offsets
+    as `cues[].words`, see [word-timed-segmentation.md](word-timed-segmentation.md).)
   - ASR json3 display durations overlap the next line, and `fixCueTiming` trims each end to the next start. **For json3,
     pauses do not show up as gaps.** The 0.7 s gap rule only applies to XML/VTT fallbacks. `[Music]` tags and `>>` still give
     hard breaks.

@@ -32,7 +32,9 @@
     maxCorrectionRatio: 0.2, // of a group's words, but at least maxCorrectionTokens
     maxUnexplainedRatio: 0.34, // reverted words above this share (min maxCorrectionTokens): reject the text
     maxGroupTextChars: 2000,
-    maxAlignCells: 400000 // LCS cells per chunk (Int32 rows, ~1.6 MB)
+    maxAlignCells: 400000, // LCS cells per chunk (Int32 rows, ~1.6 MB)
+    splitAtSentenceEnds: true, // split a line at an inner sentence end when it has word times
+    sentenceCutMinSeconds: 1.2 // cut a model group at a sentence end when both sides last this long (0: off)
   };
 
   const SYSTEM_PROMPT =
@@ -192,14 +194,80 @@
       units.push({
         uid: units.length + 1,
         rawIds: pendingIds.concat([cue.id]),
+        cueId: cue.id,
         start,
         end,
         rawText: text,
-        text: unitText
+        text: unitText,
+        // Word times only when the unit text is the whole cue text (no rolling prefix removed).
+        words: unitText === text && Array.isArray(cue.words) ? cue.words : null
       });
       pendingIds = [];
     }
     return { units, log };
+  }
+
+  // Valid per-word times for a unit: texts join to the unit text, times strictly increase and lie
+  // inside the unit. Returns null otherwise, and the unit is not split.
+  function wordTimesOf(unit) {
+    const ws = unit.words;
+    if (!Array.isArray(ws) || ws.length < 2) return null;
+    const out = [];
+    for (const w of ws) {
+      if (!Array.isArray(w) || typeof w[0] !== "string" || !w[0].trim()) return null;
+      const t = Number(w[1]);
+      if (!Number.isFinite(t)) return null;
+      out.push([squash(w[0]), t]);
+    }
+    if (out.map((w) => w[0]).join(" ") !== unit.text) return null;
+    for (let i = 1; i < out.length; i++) if (!(out[i][1] > out[i - 1][1])) return null;
+    if (out[0][1] < unit.start - 0.001 || out[out.length - 1][1] >= unit.end) return null;
+    return out;
+  }
+
+  // Splits a unit after each inner sentence end, at the next word's real start time. The pieces
+  // cover the same raw cue; the first keeps the unit start and the ids absorbed before the cue,
+  // the last keeps the unit end and the ids absorbed after it (empty cues, rolling duplicates).
+  function splitAtSentenceEnds(units, log) {
+    const out = [];
+    for (const unit of units) {
+      const ws = wordTimesOf(unit);
+      const pieces = [];
+      if (ws) {
+        let cur = [];
+        ws.forEach((w, i) => {
+          cur.push(w);
+          if (i < ws.length - 1 && /[.?!]["')\]]*$/.test(w[0])) {
+            pieces.push(cur);
+            cur = [];
+          }
+        });
+        pieces.push(cur);
+      }
+      if (pieces.length < 2) {
+        out.push({ ...unit, uid: out.length + 1 });
+        continue;
+      }
+      const rawId = unit.cueId;
+      const at = unit.rawIds.indexOf(rawId);
+      const last = pieces.length - 1;
+      pieces.forEach((piece, k) => {
+        const text = piece.map((w) => w[0]).join(" ");
+        out.push({
+          uid: out.length + 1,
+          rawIds: (k === 0 ? unit.rawIds.slice(0, at) : []).concat([rawId], k === last ? unit.rawIds.slice(at + 1) : []),
+          cueId: rawId,
+          start: k === 0 ? unit.start : piece[0][1],
+          end: k < pieces.length - 1 ? pieces[k + 1][0][1] : unit.end,
+          rawText: text,
+          text,
+          words: null,
+          splitFrom: rawId
+        });
+      });
+      log.push({ type: "cue_split_at_sentence_end", raw_id: rawId, parts: pieces.length });
+    }
+    return out;
   }
 
   // breaks[i] === true: unit i may not be grouped with unit i-1.
@@ -484,11 +552,74 @@
   }
 
   // Splits one model group (items: {unit, tokens}) into segments that respect hard breaks and the
-  // duration/length/gap limits. A group within the limits is kept as the model proposed. Otherwise
+  // duration/length/gap limits. It is first cut at sentence ends (splitAtSentenceBoundaries); a span
+  // within the limits is then kept as it is. Otherwise
   // the cuts are chosen by a small DP over cue boundaries: each cut costs 1 after a sentence end,
   // 2 after clause punctuation, 4 elsewhere; ties go to the more even split. Single cues are never
   // split (no word timing), so a single over-long cue stays as it is.
   function segmentItems(items, breaks, cfg) {
+    return splitAtSentenceBoundaries(items, cfg).flatMap((span) => segmentSpan(span, breaks, cfg));
+  }
+
+  // Cuts a model group after each cue that ends a sentence, when the text before the cut (since the
+  // last cut) and the next sentence each last at least sentenceCutMinSeconds; a shorter sentence
+  // stays with the one before it. The model tends to merge the pieces of a split cue back together.
+  function splitAtSentenceBoundaries(items, cfg) {
+    const min = cfg.sentenceCutMinSeconds;
+    if (!(min > 0) || items.length < 2) return [items];
+    const dur = (from, to) => items[to - 1].unit.end - items[from].unit.start;
+    const candidates = [];
+    for (let k = 1; k < items.length; k++) if (endsSentence(items[k - 1].tokens)) candidates.push(k);
+    const spans = [];
+    let last = 0;
+    candidates.forEach((k, i) => {
+      const nextEnd = i + 1 < candidates.length ? candidates[i + 1] : items.length;
+      if (dur(last, k) >= min && dur(k, nextEnd) >= min) {
+        spans.push(items.slice(last, k));
+        last = k;
+      }
+    });
+    spans.push(items.slice(last));
+    return spans;
+  }
+
+  // A segment that ends with the start of the next sentence ("...right? And our") hands that tail
+  // to the next segment when the tail is shorter than sentenceCutMinSeconds, does not itself end a
+  // sentence, no hard break or long gap follows it, and the next segment stays within the limits.
+  // Mutates segments in place; returns the number of tails moved.
+  function moveSentenceTails(segments, breaks, cfg) {
+    const min = cfg.sentenceCutMinSeconds;
+    if (!(min > 0)) return 0;
+    const textLen = (items) => items.map((it) => it.tokens.join(" ")).filter(Boolean).join(" ").length;
+    let moved = 0;
+    for (let s = 0; s + 1 < segments.length; s++) {
+      const seg = segments[s];
+      const next = segments[s + 1];
+      let k = -1;
+      for (let i = seg.length - 1; i >= 1; i--) {
+        if (endsSentence(seg[i - 1].tokens)) {
+          k = i;
+          break;
+        }
+      }
+      if (k < 1) continue;
+      const tail = seg.slice(k);
+      const last = tail[tail.length - 1];
+      const first = next[0];
+      if (endsSentence(last.tokens)) continue;
+      if (last.unit.end - tail[0].unit.start >= min) continue;
+      if (breaks[first.unit.uid - 1] || first.unit.start - last.unit.end > cfg.maxGapSeconds) continue;
+      const merged = tail.concat(next);
+      if (merged[merged.length - 1].unit.end - merged[0].unit.start > cfg.maxGroupSeconds) continue;
+      if (textLen(merged) > cfg.maxGroupChars) continue;
+      segments[s] = seg.slice(0, k);
+      segments[s + 1] = merged;
+      moved++;
+    }
+    return moved;
+  }
+
+  function segmentSpan(items, breaks, cfg) {
     const n = items.length;
     const textOf = (from, to) => items.slice(from, to).map((it) => it.tokens.join(" ")).filter(Boolean).join(" ");
     const forced = items.map((it, k) => k > 0 &&
@@ -553,14 +684,20 @@
         end_time: secondsToTimestamp(end),
         source: seg.text,
         fa: "",
-        source_ids: seg.items.flatMap((it) => it.unit.rawIds)
+        source_ids: dedupeRuns(seg.items.flatMap((it) => it.unit.rawIds))
       };
     });
   }
 
-  // Final contract check: every raw cue exactly once and in order, finite ordered non-overlapping timing.
+  // Consecutive equal ids collapse to one (a raw cue split at a sentence end spans several pieces).
+  function dedupeRuns(ids) {
+    return ids.filter((id, i) => i === 0 || id !== ids[i - 1]);
+  }
+
+  // Final contract check: every raw cue in order (a split cue may span consecutive output cues),
+  // finite ordered non-overlapping timing.
   function validateOutput(cues, rawCues) {
-    const ids = cues.flatMap((c) => c.source_ids);
+    const ids = dedupeRuns(cues.flatMap((c) => c.source_ids));
     if (ids.length !== rawCues.length || ids.some((id, i) => id !== rawCues[i].id)) return "coverage";
     for (let i = 0; i < cues.length; i++) {
       const c = cues[i];
@@ -589,6 +726,8 @@
       raw_cue_count: Array.isArray(rawWorkfile?.cues) ? rawWorkfile.cues.length : 0,
       cue_count: 0,
       context_coverage: "none",
+      cues_split: 0,
+      tails_moved: 0,
       chunks_total: 0,
       chunks_reconstructed: 0,
       chunks_fallback: 0,
@@ -620,7 +759,10 @@
       // Snapshot: the caller's workfile is never modified.
       const rawCues = JSON.parse(JSON.stringify(rawWorkfile.cues));
       const languageCode = rawWorkfile?.source_track?.languageCode || "";
-      const { units, log } = normalizeCues(rawCues, cfg);
+      const normalized = normalizeCues(rawCues, cfg);
+      const log = normalized.log;
+      const units = cfg.splitAtSentenceEnds ? splitAtSentenceEnds(normalized.units, log) : normalized.units;
+      report.cues_split = log.filter((x) => x.type === "cue_split_at_sentence_end").length;
       report.normalization = log;
       if (!units.length) return finish(rawWorkfile, "fallback_no_text");
       const breaks = computeHardBreaks(units, cfg);
@@ -662,8 +804,22 @@
       }
 
       // Reconstruction in bounded chunks with read-only neighbours.
+      // chunkSize counts raw cues: the pieces of a split cue count once and stay in one chunk, so
+      // splitting adds no requests.
       const chunks = [];
-      for (let i = 0; i < units.length; i += cfg.chunkSize) chunks.push(units.slice(i, i + cfg.chunkSize));
+      let current = [];
+      let cuesInChunk = 0;
+      units.forEach((unit, i) => {
+        const continuesCue = i > 0 && unit.splitFrom !== undefined && unit.cueId === units[i - 1].cueId;
+        if (!continuesCue && cuesInChunk >= cfg.chunkSize) {
+          chunks.push(current);
+          current = [];
+          cuesInChunk = 0;
+        }
+        current.push(unit);
+        if (!continuesCue) cuesInChunk++;
+      });
+      if (current.length) chunks.push(current);
       report.chunks_total = chunks.length;
       const results = new Array(chunks.length);
       let next = 0;
@@ -776,6 +932,7 @@
 
       if (!report.chunks_reconstructed) return finish(rawWorkfile, "fallback_all_chunks_failed");
 
+      report.tails_moved = moveSentenceTails(segments, breaks, cfg);
       const cues = buildCues(segments);
       const invalid = validateOutput(cues, rawCues);
       if (invalid) {
@@ -792,6 +949,9 @@
         reason: report.reason,
         raw_cue_count: report.raw_cue_count,
         cue_count: report.cue_count,
+        cues_split: report.cues_split,
+        // Reference-only context for the translator prompt (sanitized, bounded lists).
+        profile: profile ? { topic: profile.topic, terms: profile.terms.slice(), proper_nouns: profile.proper_nouns.slice() } : null,
         warnings: report.warnings.slice(),
         corrections: report.corrections.slice(),
         rejections: report.rejections.slice()
@@ -809,6 +969,7 @@
       applied: report.applied,
       reason: report.reason,
       raw_cues: report.raw_cue_count,
+      split_cues: report.cues_split,
       cues: report.cue_count,
       chunks_total: report.chunks_total,
       chunks_fallback: report.chunks_fallback,
@@ -830,6 +991,8 @@
     summarizeReport,
     // exposed for tests
     normalizeCues,
+    wordTimesOf,
+    splitAtSentenceEnds,
     computeHardBreaks,
     alignGroup,
     alignChunk,

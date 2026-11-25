@@ -71,7 +71,14 @@ test("automatic track + Nemotron: reconstructed cues go to the existing translat
     assert.equal(r.body.model, NEMOTRON);
   }
   const translation = requests.filter((r) => !isPreprocessRequest(r));
-  assert.ok(translation.every((r) => r.body.chat_template_kwargs === undefined && r.body.max_tokens === 4096));
+  assert.ok(translation.length > 0);
+  for (const r of translation) {
+    assert.deepEqual(r.body.chat_template_kwargs, { enable_thinking: false }, "Nemotron translation runs without thinking");
+    assert.equal(r.body.max_tokens, 4096);
+    const prompt = r.body.messages[1].content;
+    assert.match(prompt, /\nVideo context \(reference only[^\n]*\nTopic: docs\n\nLines:\n/, "profile reaches the translator");
+    assert.doesNotMatch(prompt, /Terms:|Proper nouns:/, "empty lists are left out");
+  }
 
   const loaded = sentToTabs[0].message;
   assert.equal(loaded.type, "LOAD_TRANSLATED_JSON");
@@ -116,6 +123,11 @@ for (const [name, opts] of [
     const sent = sentToTabs[0].message.workfile;
     assert.deepEqual(sent.cues.map((c) => [c.id, c.start, c.end, c.source]), raw.cues.map((c) => [c.id, c.start, c.end, c.source]));
     assert.equal(sent.caption_preprocessing, undefined);
+    const translation = requests.filter((r) => !isPreprocessRequest(r));
+    for (const r of translation) {
+      assert.doesNotMatch(r.body.messages[1].content, /Video context/, "no profile, no context section");
+      assert.equal(r.body.chat_template_kwargs, undefined, "no preprocessing, translation body unchanged");
+    }
     assert.equal(store["ccCraftTranslateStatus:fixture-video"].preprocessing, null);
   });
 }
@@ -129,8 +141,27 @@ test("preprocessing API failure (no valid key): falls back, translation still ru
   assert.equal(pre.length, 4, "context and chunk, each with one retry");
   assert.deepEqual(pre.map((r) => r.auth), ["Bearer nvapi-a", "Bearer nvapi-b", "Bearer nvapi-a", "Bearer nvapi-b"], "keys rotate on failure");
   assert.equal(sentToTabs[0].message.workfile.cues.length, raw.cues.length);
+  const translation = requests.filter((r) => !isPreprocessRequest(r));
+  assert.ok(translation.length && translation.every((r) => r.body.chat_template_kwargs?.enable_thinking === false), "preprocessing ran (and fell back): thinking off");
+  assert.ok(translation.every((r) => !r.body.messages[1].content.includes("Video context")), "fallback: no profile");
   const status = store["ccCraftTranslateStatus:fixture-video"];
   assert.equal(status.state, "done");
   assert.equal(status.preprocessing.applied, false);
   assert.deepEqual(status.preprocessing.warnings, ["context_http_401", "chunk_http_401"]);
+});
+
+test("buildChunkPrompt: no or empty context leaves the prompt unchanged; context values are bounded", () => {
+  const { ctx } = loadBackground({ fetchImpl: makeFetch().fetchImpl });
+  const cues = [{ id: 1, source: "hello  world" }, { id: 2, source: "bye" }];
+  const plain = ctx.buildChunkPrompt(cues, lang);
+  assert.ok(plain.endsWith(" translated into Traditional Chinese (Taiwan).\n\nLines:\n1| hello world\n2| bye"));
+  for (const empty of [null, undefined, {}, { topic: "  ", terms: [""], proper_nouns: "x" }, "text"]) {
+    assert.equal(ctx.buildChunkPrompt(cues, lang, empty), plain);
+  }
+  const long = "x".repeat(500);
+  const withCtx = ctx.buildChunkPrompt(cues, lang, {
+    topic: "Hooks\nin  Claude", terms: Array.from({ length: 40 }, (_, i) => "t" + i), proper_nouns: [long]
+  });
+  assert.match(withCtx, /\nTopic: Hooks in Claude\nTerms: t0; [^\n]*t29\nProper nouns: x{200}\n\nLines:\n/);
+  assert.doesNotMatch(withCtx, /t30/);
 });
