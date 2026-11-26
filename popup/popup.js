@@ -5,7 +5,11 @@ const trackSelect = $("trackSelect");
 const fontSize = $("fontSize");
 const bottom = $("bottom");
 const enabled = $("enabled");
-const showOriginal = $("showOriginal");
+const modeInputs = {
+  translation: $("modeTranslation"),
+  bilingual: $("modeBilingual"),
+  original: $("modeOriginal")
+};
 const subColor = $("subColor");
 const languageLearning = $("languageLearning");
 
@@ -622,20 +626,38 @@ const DEFAULT_SUB_SETTINGS = {
   enabled: true,
   color: "#ffffff",
   showOriginal: false,
+  subtitleMode: "translation",
   languageLearning: false
 };
+
+// Same mapping as subtitleModeOf in src/content.js: settings saved before subtitleMode existed
+// map to what they showed: the original line was on when showOriginal or word lookup was on.
+function subtitleModeOf(s) {
+  const mode = s?.subtitleMode;
+  if (mode === "translation" || mode === "bilingual" || mode === "original") return mode;
+  return s?.showOriginal || s?.languageLearning ? "bilingual" : "translation";
+}
+
+function selectedMode() {
+  return Object.keys(modeInputs).find((m) => modeInputs[m].checked) || "translation";
+}
+
+function setMode(mode) {
+  for (const [m, input] of Object.entries(modeInputs)) input.checked = m === mode;
+}
 
 async function loadSettings() {
   const result = await chrome.storage.local.get({
     ccCraftSubtitleSettings: DEFAULT_SUB_SETTINGS
   });
 
-  const settings = { ...DEFAULT_SUB_SETTINGS, ...(result.ccCraftSubtitleSettings || {}) };
+  const stored = result.ccCraftSubtitleSettings || {};
+  const settings = { ...DEFAULT_SUB_SETTINGS, ...stored, subtitleMode: subtitleModeOf(stored) };
   fontSize.value = settings.fontSize;
   bottom.value = settings.bottom;
   enabled.checked = settings.enabled;
   subColor.value = settings.color;
-  showOriginal.checked = settings.showOriginal;
+  setMode(settings.subtitleMode);
   languageLearning.checked = settings.languageLearning;
 
   $("fontSizeValue").textContent = settings.fontSize;
@@ -650,7 +672,9 @@ async function saveAndApplySettings() {
     bottom: Number(bottom.value),
     enabled: Boolean(enabled.checked),
     color: subColor.value || "#ffffff",
-    showOriginal: Boolean(showOriginal.checked),
+    // showOriginal stays for older content scripts that do not know subtitleMode.
+    showOriginal: selectedMode() !== "translation",
+    subtitleMode: selectedMode(),
     languageLearning: Boolean(languageLearning.checked)
   };
 
@@ -736,9 +760,10 @@ fontSize.addEventListener("input", saveAndApplySettings);
 bottom.addEventListener("input", saveAndApplySettings);
 enabled.addEventListener("change", saveAndApplySettings);
 subColor.addEventListener("input", saveAndApplySettings);
-showOriginal.addEventListener("change", saveAndApplySettings);
+for (const input of Object.values(modeInputs)) input.addEventListener("change", saveAndApplySettings);
 languageLearning.addEventListener("change", () => {
-  if (languageLearning.checked) showOriginal.checked = true;
+  // Word lookup works on the original line, so "Translation only" switches to both lines.
+  if (languageLearning.checked && modeInputs.translation.checked) setMode("bilingual");
   saveAndApplySettings();
 });
 

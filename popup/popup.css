@@ -226,3 +226,51 @@ input[type="password"] {
 #status.busy {
   animation: ccPulse 1.4s ease-in-out infinite;
 }
+
+/* Subtitle mode: native radios, tinted with the popup's ink color. */
+.modes {
+  border: 0;
+  margin: 0 0 4px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  accent-color: #111;
+}
+
+.modes legend {
+  font-size: 13px;
+  padding: 0;
+  margin-bottom: 6px;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #e3e3e3;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.choice:has(input:checked) {
+  border-color: #111;
+}
+
+.choice:focus-within {
+  outline: 2px solid #111;
+  outline-offset: 2px;
+}
+
+.choice input {
+  width: auto;
+  margin: 2px 0 0;
+}
+
+.choice small {
+  display: block;
+  margin-top: 2px;
+  color: #666;
+  font-size: 12px;
+}

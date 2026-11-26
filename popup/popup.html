@@ -65,10 +65,21 @@
   <section class="step">
     <div class="stepTitle">Language learning</div>
 
-    <label class="check">
-      <input id="showOriginal" type="checkbox" />
-      Show original subtitle under the translation
-    </label>
+    <fieldset class="modes">
+      <legend>Show on the video</legend>
+      <label class="choice">
+        <input id="modeTranslation" type="radio" name="subtitleMode" value="translation" />
+        <span>Translation only<small>Only the translated line.</small></span>
+      </label>
+      <label class="choice">
+        <input id="modeBilingual" type="radio" name="subtitleMode" value="bilingual" />
+        <span>Translation + original<small>Translated line with the original under it.</small></span>
+      </label>
+      <label class="choice">
+        <input id="modeOriginal" type="radio" name="subtitleMode" value="original" />
+        <span>Original only<small>The original line, full size. Hover a word for its meaning.</small></span>
+      </label>
+    </fieldset>
 
     <label class="check">
       <input id="languageLearning" type="checkbox" />
