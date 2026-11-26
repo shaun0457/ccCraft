@@ -73,10 +73,39 @@ function statusKey(videoId) {
   return "ccCraftTranslateStatus:" + videoId;
 }
 
-async function setStatus(videoId, status) {
-  await chrome.storage.local.set({
+// The latest "running" status per video and when the run itself last wrote one.
+const runningStatus = new Map();
+
+function writeStatus(videoId, status) {
+  return chrome.storage.local.set({
     [statusKey(videoId)]: { ...status, updated_at: Date.now() }
   });
+}
+
+async function setStatus(videoId, status) {
+  if (status?.state === "running") runningStatus.set(videoId, { status, progressAt: Date.now() });
+  else runningStatus.delete(videoId);
+  await writeStatus(videoId, status);
+}
+
+// While a translation runs, its status is written again every 20 s, so updated_at shows the
+// background is alive even while one request waits for an answer (up to 90 s × 3 attempts).
+// The popup calls a run interrupted after 3 minutes without an update. The storage write also
+// keeps the service worker from being stopped as idle.
+// A run that has written no status of its own for 5 minutes is taken as stuck (a request that
+// never answers): the heartbeat skips its writes, so the popup reports it interrupted 3 minutes
+// later and Translate continues from the checkpoint. If the run writes a status again, the
+// heartbeat picks up again.
+const STATUS_HEARTBEAT_MS = 20000;
+const STATUS_STALL_LIMIT_MS = 5 * 60 * 1000;
+
+function startStatusHeartbeat(videoId) {
+  const timer = setInterval(() => {
+    const live = runningStatus.get(videoId);
+    if (!live || Date.now() - live.progressAt >= STATUS_STALL_LIMIT_MS) return;
+    writeStatus(videoId, live.status).catch(() => {});
+  }, STATUS_HEARTBEAT_MS);
+  return () => clearInterval(timer);
 }
 
 // ---------- Stored subtitle expiry ----------
@@ -473,7 +502,19 @@ async function preprocessingGateOpen(workfile, provider, model) {
   return CP.shouldPreprocess({ workfile, provider, model, enabled }).run;
 }
 
-async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey, model, tabId, lang }) {
+async function translateWorkfile(job) {
+  const videoId = job?.workfile?.video?.id || "unknown-video";
+  const stopHeartbeat = startStatusHeartbeat(videoId);
+  try {
+    await runTranslation(job);
+  } finally {
+    stopHeartbeat();
+    // A run that ended without a final status (an unexpected error) is not kept "alive".
+    runningStatus.delete(videoId);
+  }
+}
+
+async function runTranslation({ workfile: originalWorkfile, provider, apiKey, model, tabId, lang }) {
   const videoId = originalWorkfile?.video?.id || "unknown-video";
   const targetLang = String(lang?.code || "");
   const fingerprint = sourceFingerprint(originalWorkfile);

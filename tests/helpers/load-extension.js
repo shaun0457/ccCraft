@@ -84,6 +84,8 @@ function loadBackground({ fetchImpl, storage = {}, tabResponses, browser = "chro
     AbortController,
     setTimeout,
     clearTimeout,
+    setInterval,
+    clearInterval,
     console,
     URL,
     structuredClone
