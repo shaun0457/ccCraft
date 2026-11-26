@@ -87,7 +87,14 @@ const SUBTITLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const SUBS_PREFIX = "cccraftSubs:";
 const SUBS_META_PREFIX = "cccraftSubsMeta:";
 const STATUS_PREFIX = "ccCraftTranslateStatus:";
+const CHECKPOINT_PREFIX = "ccCraftTranslateCheckpoint:";
 
+function checkpointKey(videoId) {
+  return CHECKPOINT_PREFIX + videoId;
+}
+
+// The checkpoint is not listed: it expires on its own last update, so a translation running
+// again for a video whose old subtitles expire meanwhile keeps its progress.
 function storedVideoKeys(videoId) {
   return [SUBS_PREFIX + videoId, SUBS_META_PREFIX + videoId, statusKey(videoId)];
 }
@@ -103,7 +110,7 @@ function purgeExpiredSubtitles(now = Date.now()) {
       const all = await chrome.storage.local.get(null);
       const videos = new Map();
       const entry = (id) => {
-        if (!videos.has(id)) videos.set(id, { subs: false, meta: null, hasMeta: false, status: null });
+        if (!videos.has(id)) videos.set(id, { subs: false, meta: null, hasMeta: false, status: null, checkpoint: null });
         return videos.get(id);
       };
       for (const [key, value] of Object.entries(all)) {
@@ -116,13 +123,21 @@ function purgeExpiredSubtitles(now = Date.now()) {
           entry(key.slice(SUBS_PREFIX.length)).subs = true;
         } else if (key.startsWith(STATUS_PREFIX)) {
           entry(key.slice(STATUS_PREFIX.length)).status = value;
+        } else if (key.startsWith(CHECKPOINT_PREFIX)) {
+          entry(key.slice(CHECKPOINT_PREFIX.length)).checkpoint = value;
         }
       }
 
       const toStamp = [];
       const toRemove = [];
       const toRemoveStatus = [];
+      // An unfinished translation's checkpoint expires 7 days after its last update.
+      const toRemoveCheckpoint = [];
       for (const [id, e] of videos) {
+        if (e.checkpoint) {
+          const updatedAt = Number(e.checkpoint?.updated_at);
+          if (!Number.isFinite(updatedAt) || now - updatedAt >= SUBTITLE_TTL_MS) toRemoveCheckpoint.push(id);
+        }
         if (e.subs || e.hasMeta) {
           const savedAt = Number(e.meta?.saved_at);
           if (!Number.isFinite(savedAt) || savedAt <= 0 || savedAt > now + SUBTITLE_TTL_MS) toStamp.push(id);
@@ -138,8 +153,9 @@ function purgeExpiredSubtitles(now = Date.now()) {
       const metaKeys = [...toStamp, ...toRemove].map((id) => SUBS_META_PREFIX + id);
       const subsKeys = toStamp.map((id) => SUBS_PREFIX + id);
       const statusKeys = toRemoveStatus.map(statusKey);
-      const current = metaKeys.length || statusKeys.length
-        ? await chrome.storage.local.get([...metaKeys, ...subsKeys, ...statusKeys])
+      const checkpointKeys = toRemoveCheckpoint.map(checkpointKey);
+      const current = metaKeys.length || statusKeys.length || checkpointKeys.length
+        ? await chrome.storage.local.get([...metaKeys, ...subsKeys, ...statusKeys, ...checkpointKeys])
         : {};
       const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -158,6 +174,11 @@ function purgeExpiredSubtitles(now = Date.now()) {
       }
       for (const id of toRemoveStatus) {
         if (same(current[statusKey(id)], videos.get(id).status)) remove.push(statusKey(id));
+      }
+      // A checkpoint written since the snapshot (translation still running) is kept.
+      for (const id of toRemoveCheckpoint) {
+        const key = checkpointKey(id);
+        if (same(current[key], videos.get(id).checkpoint)) remove.push(key);
       }
       if (Object.keys(stamp).length) await chrome.storage.local.set(stamp);
       if (remove.length) await chrome.storage.local.remove(remove);
@@ -395,22 +416,111 @@ async function preprocessForTranslation(workfile, { provider, apiKey, model, vid
   }
 }
 
+// ---------- Translation checkpoint ----------
+
+// Translated lines are saved per video while a translation runs, so a run that stops (browser or
+// extension restart, error, tab closed) continues from there the next time Translate is clicked.
+// A checkpoint is reused only for the same source captions and the same target language; another
+// provider or model continues it. It is removed when the subtitles reach the tab, when the user
+// clears the video's subtitles, or 7 days after its last update.
+
+// Identifies the source captions: same track and the same cue ids, times and text.
+function sourceFingerprint(workfile) {
+  const cues = Array.isArray(workfile?.cues) ? workfile.cues : [];
+  const text = cues.map((c) => c.id + "|" + c.start + "|" + c.end + "|" + (c.source || "")).join("\n");
+  let hash = 5381;
+  for (let i = 0; i < text.length; i++) hash = ((hash * 33) ^ text.charCodeAt(i)) >>> 0;
+  const track = workfile?.source_track || {};
+  return [track.vssId || "", track.languageCode || "", track.kind || "", cues.length, hash.toString(16)].join(":");
+}
+
+// The workfile to translate, without per-word times (not needed after preprocessing) or old translations.
+function checkpointWorkfile(workfile) {
+  return { ...workfile, cues: workfile.cues.map(({ words, fa, ...cue }) => cue) };
+}
+
+// Returns a usable checkpoint, or null; one for other captions or another language is removed.
+// A checkpoint without any translated line is not used either: the run starts over, so
+// preprocessing runs again for the current provider and model.
+async function loadCheckpoint(videoId, fingerprint, targetLang) {
+  const key = checkpointKey(videoId);
+  const stored = (await chrome.storage.local.get(key).catch(() => ({})))?.[key];
+  const usable = Boolean(stored) && stored.v === 1 && stored.fingerprint === fingerprint &&
+    stored.targetLang === targetLang && Array.isArray(stored.workfile?.cues) && stored.workfile.cues.length > 0 &&
+    Boolean(stored.translations) && typeof stored.translations === "object" &&
+    Object.values(stored.translations).some((fa) => typeof fa === "string" && fa.trim());
+  if (stored !== undefined && !usable) await chrome.storage.local.remove(key).catch(() => {});
+  return usable ? stored : null;
+}
+
+// Writes run one after another, each with the translations known when it was asked for, so an
+// older snapshot never lands after a newer one. A failed write (storage full) is skipped: the
+// translation goes on, only the saved progress is older.
+function makeCheckpointWriter(videoId, base) {
+  let chain = Promise.resolve();
+  return (faById) => {
+    const record = { ...base, translations: Object.fromEntries(faById), updated_at: Date.now() };
+    chain = chain.then(() => chrome.storage.local.set({ [checkpointKey(videoId)]: record })).catch(() => {});
+    return chain;
+  };
+}
+
+async function preprocessingGateOpen(workfile, provider, model) {
+  const CP = globalThis.CaptionPreprocessing;
+  if (!CP) return false;
+  const stored = await chrome.storage.local.get(PREPROCESSING_SETTING_KEY).catch(() => ({}));
+  const enabled = stored?.[PREPROCESSING_SETTING_KEY]?.enabled !== false;
+  return CP.shouldPreprocess({ workfile, provider, model, enabled }).run;
+}
+
 async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey, model, tabId, lang }) {
   const videoId = originalWorkfile?.video?.id || "unknown-video";
-  const { workfile, summary: preprocessing } = await preprocessForTranslation(originalWorkfile, {
-    provider, apiKey, model, videoId
-  });
+  const targetLang = String(lang?.code || "");
+  const fingerprint = sourceFingerprint(originalWorkfile);
+  const checkpoint = await loadCheckpoint(videoId, fingerprint, targetLang);
+
+  let workfile;
+  let preprocessing;
+  if (checkpoint) {
+    // The saved workfile is the one translated before (reconstructed when preprocessing ran),
+    // so its cue ids match the saved translations; preprocessing is not run again.
+    workfile = checkpoint.workfile;
+    preprocessing = checkpoint.preprocessing || null;
+  } else {
+    ({ workfile, summary: preprocessing } = await preprocessForTranslation(originalWorkfile, {
+      provider, apiKey, model, videoId
+    }));
+  }
   const cues = Array.isArray(workfile?.cues) ? workfile.cues : [];
   const context = workfile?.caption_preprocessing?.profile || null;
   // Preprocessing ran (applied or fell back) only behind its Nemotron gate; an internal error may come before it.
-  const thinkingOff = Boolean(preprocessing) && preprocessing.reason !== "fallback_error";
+  // A continued run may use another provider or model than the first one, so its own gate decides.
+  const thinkingOff = checkpoint
+    ? await preprocessingGateOpen(originalWorkfile, provider, model)
+    : Boolean(preprocessing) && preprocessing.reason !== "fallback_error";
   if (!cues.length) {
     await setStatus(videoId, { state: "error", error: "There are no subtitle lines to translate." });
     return;
   }
   const faById = new Map();
+  if (checkpoint) {
+    const ids = new Set(cues.map((cue) => Number(cue.id)));
+    for (const [id, fa] of Object.entries(checkpoint.translations)) {
+      const text = typeof fa === "string" ? fa.trim() : "";
+      if (text && ids.has(Number(id))) faById.set(Number(id), text);
+    }
+  }
+  const resumedFrom = faById.size;
+  const saveCheckpoint = makeCheckpointWriter(videoId, {
+    v: 1,
+    fingerprint,
+    targetLang,
+    workfile: checkpointWorkfile(workfile),
+    preprocessing,
+    saved_at: checkpoint?.saved_at || Date.now()
+  });
   const chunkErrors = [];
-  let done = 0;
+  let done = resumedFrom;
   const missingCues = () => cues.filter((cue) => !faById.get(Number(cue.id)));
   const keyRing = makeKeyRing(apiKey);
   const countTranslated = () => cues.length - missingCues().length;
@@ -436,10 +546,13 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
           chunkErrors.push(chunkErr.message);
         }
         done = countTranslated();
+        // Saved before the status, so a status with progress always has a checkpoint behind it.
+        await saveCheckpoint(faById);
         await setStatus(videoId, {
           state: "running",
           done,
           total: cues.length,
+          resumedFrom,
           retryRound: retryRound || 0,
           missing: retryRound ? missingCues().length : 0,
           lastError: chunkErrors[chunkErrors.length - 1] || null
@@ -452,11 +565,13 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
   };
 
   try {
-    await setStatus(videoId, { state: "running", done: 0, total: cues.length });
-    await translateBatch(cues, CHUNK_SIZE, 0);
+    // The first checkpoint write comes after the first chunk: one without translated lines is never used.
+    await setStatus(videoId, { state: "running", done, total: cues.length, resumedFrom });
+    await translateBatch(missingCues(), CHUNK_SIZE, 0);
 
-    // If round 1 produced zero translations, the API is broken — show error now
-    if (!faById.size) {
+    // If round 1 added zero translations to the missing lines, the API is broken — show error now.
+    // The checkpoint stays, so a later run can still continue.
+    if (missingCues().length && faById.size === resumedFrom) {
       const reason = chunkErrors[0] || "No translations were received from the model.";
       const manualHint =
         'The AI could not translate this video. Please translate it manually: open the "Manual translation" section, download the JSON or prompt, translate it yourself, then load the translated file back.';
@@ -496,6 +611,8 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
     if (!res?.ok) {
       throw new Error(res?.error || "Failed to load the translated subtitles onto the video.");
     }
+    // The subtitles are saved by the tab now; the progress is no longer needed.
+    await chrome.storage.local.remove(checkpointKey(videoId)).catch(() => {});
     await setStatus(videoId, {
       state: "done",
       done: cues.length,

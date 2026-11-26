@@ -992,7 +992,13 @@ async function clearSubs() {
   faCues = [];
 
   const videoId = getVideoId();
-  await chrome.storage.local.remove([`cccraftSubs:${videoId}`, `cccraftSubsMeta:${videoId}`, `ccCraftTranslateStatus:${videoId}`]);
+  // The checkpoint goes too, so the next Translate starts over.
+  await chrome.storage.local.remove([
+    `cccraftSubs:${videoId}`,
+    `cccraftSubsMeta:${videoId}`,
+    `ccCraftTranslateStatus:${videoId}`,
+    `ccCraftTranslateCheckpoint:${videoId}`
+  ]);
 
   const overlay = document.getElementById("cccraft-subtitle-overlay");
   if (overlay) setOverlayText(overlay, "", "");

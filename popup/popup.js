@@ -244,6 +244,10 @@ function runningMessage(status, prefixKey) {
   const percent = status.total ? Math.round((status.done / status.total) * 100) : 0;
   let text = t("runProgress", { prefix: t(prefixKey), done: status.done, total: status.total, percent });
 
+  if (status.resumedFrom) {
+    text += "\n" + t("runResumed", { count: status.resumedFrom });
+  }
+
   if (status.retryRound) {
     text += "\n" + t("runRetry", { round: status.retryRound, missing: status.missing });
   }
@@ -254,6 +258,11 @@ function runningMessage(status, prefixKey) {
 
   text += "\n" + t("runBackgroundNote");
   return text;
+}
+
+// After a stopped or failed run: the translated lines were saved and the next Translate continues.
+function resumeHint(status) {
+  return status.done > 0 && status.total ? "\n" + t("resumeHint", { done: status.done, total: status.total }) : "";
 }
 
 function doneMessage(status) {
@@ -538,7 +547,7 @@ function startPolling(videoId) {
     if (status.state === "error") {
       stopPolling();
       autoTranslateBtn.disabled = false;
-      setStatus(t("autoFailed", { error: status.error }), true);
+      setStatus(t("autoFailed", { error: status.error }) + resumeHint(status), true);
     }
   }, 800);
 }
@@ -559,7 +568,7 @@ async function checkExistingTranslateStatus() {
     if (status.state === "running") {
       // If it has not updated for a while, the process was interrupted (e.g. browser closed).
       if (ageMs > 3 * 60 * 1000) {
-        setStatus(t("interrupted"), true);
+        setStatus(t("interrupted") + resumeHint(status), true);
         return;
       }
 
@@ -573,7 +582,7 @@ async function checkExistingTranslateStatus() {
     if (ageMs > 30 * 60 * 1000) return;
 
     if (status.state === "error") {
-      setStatus(t("lastFailed", { error: status.error }), true);
+      setStatus(t("lastFailed", { error: status.error }) + resumeHint(status), true);
     } else if (status.state === "done") {
       setStatus(doneMessage(status));
     }

@@ -78,7 +78,7 @@ function fakeElement() {
 }
 
 // Opens the real popup on a YouTube tab whose translate status is `status`; returns the status text.
-async function openPopup(status) {
+async function openPopup(status, { ageMs = 0 } = {}) {
   const elements = new Map();
   const onLoad = [];
   const intervals = [];
@@ -106,7 +106,7 @@ async function openPopup(status) {
       sendMessage: async () => ({ ok: true, tracks: [], preferredIndex: 0 })
     },
     runtime: {
-      sendMessage: async (msg) => (msg.type === "GET_TRANSLATE_STATUS" ? { ok: true, status: { ...status, updated_at: Date.now() } } : { ok: false })
+      sendMessage: async (msg) => (msg.type === "GET_TRANSLATE_STATUS" ? { ok: true, status: { ...status, updated_at: Date.now() - ageMs } } : { ok: false })
     }
   };
   const ctx = {
@@ -190,4 +190,34 @@ test("popup shows no preprocessing line when it was bypassed (manual track)", as
   const text = await openPopup(final);
   assert.match(text, /translated/i);
   assert.doesNotMatch(text, /reconstruct|preprocessing/i);
+});
+
+// ---------- translation checkpoint ----------
+
+const HINT = /💾 40 \/ 120 lines are saved\. Click “Translate & show subtitles” again to continue from there \(same target language\)\. To start over, clear this video's subtitles first\./;
+
+test("a failed run with saved lines tells the user Translate continues from there", async () => {
+  const text = await openPopup({ state: "error", done: 40, total: 120, error: "The video tab is no longer available." });
+  assert.match(text, /^❌ The last auto-translate for this video failed:\nThe video tab is no longer available\.\n/);
+  assert.match(text, HINT);
+});
+
+test("an interrupted run with saved lines shows the same hint", async () => {
+  const text = await openPopup({ state: "running", done: 40, total: 120 }, { ageMs: 4 * 60 * 1000 });
+  assert.match(text, /^⚠️ The previous translation was interrupted/);
+  assert.match(text, HINT);
+});
+
+test("no hint when nothing was translated", async () => {
+  const failed = await openPopup({ state: "error", done: 0, total: 120, error: "HTTP 401" });
+  assert.doesNotMatch(failed, /💾/);
+  const old = await openPopup({ state: "error", error: "There are no subtitle lines to translate." });
+  assert.doesNotMatch(old, /💾|undefined/);
+});
+
+test("a continued run says how many lines were already translated", async () => {
+  const text = await openPopup({ state: "running", done: 100, total: 120, resumedFrom: 100 });
+  assert.match(text, /\n↪️ Continuing from the last run: 100 lines were already translated\./);
+  const fresh = await openPopup({ state: "running", done: 10, total: 120, resumedFrom: 0 });
+  assert.doesNotMatch(fresh, /Continuing/);
 });
