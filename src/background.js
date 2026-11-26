@@ -682,6 +682,8 @@ async function runTranslation({ workfile: originalWorkfile, provider, apiKey, mo
         videoId,
         workfile,
         subtitleDir,
+        // Lines left untranslated keep showing the original, as they did while translating.
+        keepUntranslated: true,
         // After partial subtitles were shown, the final load does not flash or turn display on again.
         quiet: partialSent
       });
@@ -709,6 +711,8 @@ async function runTranslation({ workfile: originalWorkfile, provider, apiKey, mo
       state: "error",
       done,
       total: cues.length,
+      // Partial subtitles already on the video stay there; the popup says so.
+      partialLines,
       error: err.message,
       preprocessing
     });

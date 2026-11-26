@@ -970,10 +970,12 @@ function extractTranslatedCues(workfile, { keepUntranslated = false } = {}) {
 // load), they are saved under that video only and not shown here. A manually loaded file passes no
 // id and goes onto the video on screen.
 // options.partial: subtitles of a translation still running; untranslated lines show the original.
+// options.keepUntranslated: the same for the final load of a translation, so a line left untranslated
+// keeps showing its original instead of disappearing when the run finishes.
 // options.quiet: an update after partial subtitles were shown: no flash, and display is not
 // turned on again if the user turned it off meanwhile.
-async function loadTranslatedJson(workfile, dir, forVideoId, { partial = false, quiet = false } = {}) {
-  const cues = extractTranslatedCues(workfile, { keepUntranslated: partial });
+async function loadTranslatedJson(workfile, dir, forVideoId, { partial = false, keepUntranslated = false, quiet = false } = {}) {
+  const cues = extractTranslatedCues(workfile, { keepUntranslated: partial || keepUntranslated });
   const videoId = forVideoId || getVideoId();
   const shown = videoId === getVideoId();
   const cueDir = dir === "ltr" ? "ltr" : "rtl";
@@ -1081,6 +1083,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (message.type === "LOAD_TRANSLATED_JSON") {
         sendResponse(await loadTranslatedJson(message.workfile, message.subtitleDir, message.videoId, {
           partial: message.partial === true,
+          keepUntranslated: message.keepUntranslated === true,
           quiet: message.quiet === true
         }));
         return;

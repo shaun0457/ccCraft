@@ -271,8 +271,10 @@ function runningMessage(status, prefixKey) {
 }
 
 // After a stopped or failed run: the translated lines were saved and the next Translate continues.
+// Partial subtitles shown while it ran stay on the video, so the popup says what is there.
 function resumeHint(status) {
-  return status.done > 0 && status.total ? "\n" + t("resumeHint", { done: status.done, total: status.total }) : "";
+  const kept = status.partialLines ? "\n" + t("partialKept", { count: status.partialLines }) : "";
+  return kept + (status.done > 0 && status.total ? "\n" + t("resumeHint", { done: status.done, total: status.total }) : "");
 }
 
 function doneMessage(status) {

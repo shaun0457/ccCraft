@@ -55,7 +55,17 @@ test("partial subtitles go to the tab at 30%, then at every further 10%, before 
   assert.deepEqual(r.partials.map(r.filled), [300, 400, 500, 600, 700, 800, 900]);
   assert.equal(r.finals.length, 1);
   assert.equal(r.filled(r.finals[0]), 1000);
+  assert.equal(r.finals[0].keepUntranslated, true, "lines left untranslated keep showing the original");
   assert.equal(r.store[STATUS].state, "done");
+});
+
+test("a run that fails after partial subtitles were shown says how many lines are on the video", async () => {
+  const omit = new Set(Array.from({ length: 600 }, (_, i) => 401 + i));
+  const r = await run(1000, { omit });
+  assert.deepEqual(r.partials.map(r.filled), [300, 400]);
+  assert.equal(r.finals.length, 0);
+  assert.equal(r.store[STATUS].state, "error");
+  assert.equal(r.store[STATUS].partialLines, 400);
 });
 
 test("only the first partial update may turn display on and flash; later ones and the final load are quiet", async () => {
@@ -141,14 +151,18 @@ const half = {
   ]
 };
 
-test("partial subtitles keep untranslated lines with their original; a final load drops them as before", async () => {
+test("partial and final translation loads keep untranslated lines with their original; a loaded file drops them as before", async () => {
   const partial = loadContent();
   await partial.ctx.loadTranslatedJson(half, "ltr", VIDEO, { partial: true });
   assert.deepEqual(partial.store["cccraftSubs:" + VIDEO].map((c) => [c.text, c.orig]), [["譯1", "line 1"], ["", "line 2"]]);
 
   const final = loadContent();
-  await final.ctx.loadTranslatedJson(half, "ltr", VIDEO);
-  assert.deepEqual(final.store["cccraftSubs:" + VIDEO].map((c) => c.text), ["譯1"]);
+  await final.ctx.loadTranslatedJson(half, "ltr", VIDEO, { keepUntranslated: true });
+  assert.deepEqual(final.store["cccraftSubs:" + VIDEO].map((c) => [c.text, c.orig]), [["譯1", "line 1"], ["", "line 2"]]);
+
+  const file = loadContent();
+  await file.ctx.loadTranslatedJson(half, "ltr", VIDEO);
+  assert.deepEqual(file.store["cccraftSubs:" + VIDEO].map((c) => c.text), ["譯1"]);
 });
 
 test("a quiet update neither flashes nor turns display back on", async () => {
@@ -164,6 +178,6 @@ test("a quiet update neither flashes nor turns display back on", async () => {
   assert.equal(first.overlay.text, "flashEnabled");
 });
 
-test("the message handler passes partial and quiet through", () => {
-  assert.match(source, /loadTranslatedJson\(message\.workfile, message\.subtitleDir, message\.videoId, \{\s*partial: message\.partial === true,\s*quiet: message\.quiet === true\s*\}\)/);
+test("the message handler passes partial, keepUntranslated and quiet through", () => {
+  assert.match(source, /loadTranslatedJson\(message\.workfile, message\.subtitleDir, message\.videoId, \{\s*partial: message\.partial === true,\s*keepUntranslated: message\.keepUntranslated === true,\s*quiet: message\.quiet === true\s*\}\)/);
 });
