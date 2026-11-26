@@ -935,7 +935,9 @@ ${JSON.stringify(workfile, null, 2)}
   };
 }
 
-function extractTranslatedCues(workfile) {
+// keepUntranslated: lines without a translation stay (shown as the original), for the partial
+// subtitles shown while a translation runs.
+function extractTranslatedCues(workfile, { keepUntranslated = false } = {}) {
   if (!workfile || !Array.isArray(workfile.cues)) {
     throw new Error("Invalid JSON file: no cues array found.");
   }
@@ -949,7 +951,7 @@ function extractTranslatedCues(workfile) {
     const orig = cleanText(cue.source || "");
 
     if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
-    if (!text) continue;
+    if (!text && !(keepUntranslated && orig)) continue;
 
     cues.push({ start, end, text, orig });
   }
@@ -967,8 +969,11 @@ function extractTranslatedCues(workfile) {
 // made for; when the tab has moved to another video meanwhile (YouTube changes videos without a page
 // load), they are saved under that video only and not shown here. A manually loaded file passes no
 // id and goes onto the video on screen.
-async function loadTranslatedJson(workfile, dir, forVideoId) {
-  const cues = extractTranslatedCues(workfile);
+// options.partial: subtitles of a translation still running; untranslated lines show the original.
+// options.quiet: an update after partial subtitles were shown: no flash, and display is not
+// turned on again if the user turned it off meanwhile.
+async function loadTranslatedJson(workfile, dir, forVideoId, { partial = false, quiet = false } = {}) {
+  const cues = extractTranslatedCues(workfile, { keepUntranslated: partial });
   const videoId = forVideoId || getVideoId();
   const shown = videoId === getVideoId();
   const cueDir = dir === "ltr" ? "ltr" : "rtl";
@@ -995,7 +1000,7 @@ async function loadTranslatedJson(workfile, dir, forVideoId) {
   requestSubtitlePurge();
 
   // اگر نمایش زیرنویس خاموش بود، روشن کن تا کاربر فکر نکند زیرنویس نیامده
-  if (!settings.enabled) {
+  if (!settings.enabled && !quiet) {
     settings.enabled = true;
     await chrome.storage.local.set({ ccCraftSubtitleSettings: settings });
   }
@@ -1004,7 +1009,7 @@ async function loadTranslatedJson(workfile, dir, forVideoId) {
   applySettings(settings);
 
   // پیام تایید را چند ثانیه روی خود ویدیو نشان بده تا معلوم شود overlay کار می‌کند
-  if (overlay) {
+  if (overlay && !quiet) {
     setOverlayText(overlay, uiText("flashEnabled", { count: cues.length }), "");
     flashUntil = Date.now() + 3000;
   }
@@ -1074,7 +1079,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (message.type === "LOAD_TRANSLATED_JSON") {
-        sendResponse(await loadTranslatedJson(message.workfile, message.subtitleDir, message.videoId));
+        sendResponse(await loadTranslatedJson(message.workfile, message.subtitleDir, message.videoId, {
+          partial: message.partial === true,
+          quiet: message.quiet === true
+        }));
         return;
       }
 

@@ -296,6 +296,6 @@ test("F3: continuing while every request fails is an error, and the saved lines 
   assert.equal(after[STATUS].state, "error");
   assert.match(after[STATUS].error, /HTTP 429/);
   assert.equal(after[STATUS].done, 100);
-  assert.equal(sentToTabs.length, 0, "nothing incomplete is sent to the tab");
+  assert.equal(sentToTabs.filter((s) => !s.message.partial).length, 0, "no final subtitles are sent to the tab");
   assert.equal(Object.keys(after[KEY].translations).length, 100, "the checkpoint is kept");
 });

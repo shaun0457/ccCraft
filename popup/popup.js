@@ -254,6 +254,10 @@ function runningMessage(status, prefixKey) {
     text += "\n" + t("runResumed", { count: status.resumedFrom });
   }
 
+  if (status.partialLines) {
+    text += "\n" + t("runPartialShown", { count: status.partialLines });
+  }
+
   if (status.retryRound) {
     text += "\n" + t("runRetry", { round: status.retryRound, missing: status.missing });
   }

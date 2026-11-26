@@ -250,3 +250,10 @@ test("a running status shows its last error translated; missing lines get the hi
   assert.match(unknown, /重試後仍有 3 行沒翻成（未知錯誤）。/);
   assert.doesNotMatch(unknown, /💡/);
 });
+
+test("a running status says how many translated lines are already on the video", async () => {
+  const text = await openPopup({ state: "running", done: 150, total: 200, partialLines: 100 }, { browserLanguage: "zh-TW" });
+  assert.match(text, /\n📺 已先把翻好的 100 行放上影片，其餘的行翻好前先顯示原文。/);
+  const before = await openPopup({ state: "running", done: 50, total: 200, partialLines: 0 }, { browserLanguage: "zh-TW" });
+  assert.doesNotMatch(before, /📺/);
+});

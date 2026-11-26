@@ -138,7 +138,7 @@ test("switching videos clears the previous video's subtitles at once, before the
 test("background.js tells the tab which video the translation is for", () => {
   const bg = fs.readFileSync(path.join(__dirname, "..", "src", "background.js"), "utf8");
   assert.match(bg, /type: "LOAD_TRANSLATED_JSON",\s*videoId,/);
-  assert.match(source, /loadTranslatedJson\(message\.workfile, message\.subtitleDir, message\.videoId\)/);
+  assert.match(source, /loadTranslatedJson\(message\.workfile, message\.subtitleDir, message\.videoId, \{/);
 });
 
 // ---------- reading the captions (before translation starts) ----------

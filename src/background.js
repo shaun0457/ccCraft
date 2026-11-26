@@ -33,6 +33,9 @@ const PROVIDERS = {
 
 const REQUEST_TIMEOUT_MS = 90000;
 const PARALLEL_REQUESTS = 3;
+// Partial subtitles go onto the video at 30% of the lines translated, then every further 10%.
+const PARTIAL_FIRST_SHARE = 0.3;
+const PARTIAL_STEP_SHARE = 0.1;
 
 function splitApiKeys(apiKey) {
   return String(apiKey || "")
@@ -565,6 +568,37 @@ async function runTranslation({ workfile: originalWorkfile, provider, apiKey, mo
   const missingCues = () => cues.filter((cue) => !faById.get(Number(cue.id)));
   const keyRing = makeKeyRing(apiKey);
   const countTranslated = () => cues.length - missingCues().length;
+  const subtitleDir = lang?.dir === "ltr" ? "ltr" : "rtl";
+  const withTranslations = () => ({
+    ...workfile,
+    cues: cues.map((cue) => ({ ...cue, fa: faById.get(Number(cue.id)) || cue.fa || "" }))
+  });
+
+  // Subtitles go onto the video while translating: first at 30% of the lines, then at every
+  // further 10%; lines not translated yet show the original. Sends run one after another; a
+  // failed send (tab gone) is skipped. Only the first one that reaches the tab turns display on
+  // and flashes the "subtitles enabled" hint; later ones (and the final load) are quiet.
+  let nextPartialShare = PARTIAL_FIRST_SHARE;
+  let partialChain = Promise.resolve();
+  let partialSent = false;
+  let partialLines = 0;
+  const showPartial = () => {
+    const share = cues.length ? done / cues.length : 0;
+    if (share < nextPartialShare - 1e-9 || share >= 1) return partialChain;
+    nextPartialShare = Math.floor(share * 10 + 1e-9) / 10 + PARTIAL_STEP_SHARE;
+    const lines = done;
+    const message = { type: "LOAD_TRANSLATED_JSON", videoId, workfile: withTranslations(), subtitleDir, partial: true };
+    partialChain = partialChain
+      .then(() => chrome.tabs.sendMessage(tabId, { ...message, quiet: partialSent }))
+      .then((res) => {
+        if (res?.ok) {
+          partialSent = true;
+          if (res.shown !== false) partialLines = lines;
+        }
+      })
+      .catch(() => {});
+    return partialChain;
+  };
 
   const translateBatch = async (batchCues, chunkSize, retryRound) => {
     const chunks = [];
@@ -589,11 +623,13 @@ async function runTranslation({ workfile: originalWorkfile, provider, apiKey, mo
         done = countTranslated();
         // Saved before the status, so a status with progress always has a checkpoint behind it.
         await saveCheckpoint(faById);
+        await showPartial();
         await setStatus(videoId, {
           state: "running",
           done,
           total: cues.length,
           resumedFrom,
+          partialLines,
           retryRound: retryRound || 0,
           missing: retryRound ? missingCues().length : 0,
           lastError: chunkErrors[chunkErrors.length - 1] || null
@@ -640,11 +676,14 @@ async function runTranslation({ workfile: originalWorkfile, provider, apiKey, mo
 
     let res;
     try {
+      await partialChain;
       res = await chrome.tabs.sendMessage(tabId, {
         type: "LOAD_TRANSLATED_JSON",
         videoId,
         workfile,
-        subtitleDir: lang?.dir === "ltr" ? "ltr" : "rtl"
+        subtitleDir,
+        // After partial subtitles were shown, the final load does not flash or turn display on again.
+        quiet: partialSent
       });
     } catch (_) {
       throw new Error("The video tab is no longer available (closed or navigated away). Open the video and translate again.");
