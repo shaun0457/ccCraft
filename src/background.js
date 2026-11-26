@@ -73,10 +73,29 @@ function statusKey(videoId) {
   return "ccCraftTranslateStatus:" + videoId;
 }
 
+// The latest "running" status per video, rewritten by the heartbeat below.
+const runningStatus = new Map();
+
 async function setStatus(videoId, status) {
+  if (status?.state === "running") runningStatus.set(videoId, status);
+  else runningStatus.delete(videoId);
   await chrome.storage.local.set({
     [statusKey(videoId)]: { ...status, updated_at: Date.now() }
   });
+}
+
+// While a translation runs, its status is written again every 20 s, so updated_at shows the
+// background is alive even while one request waits for an answer (up to 90 s × 3 attempts).
+// The popup calls a run interrupted after 3 minutes without an update. The storage write also
+// keeps the service worker from being stopped as idle.
+const STATUS_HEARTBEAT_MS = 20000;
+
+function startStatusHeartbeat(videoId) {
+  const timer = setInterval(() => {
+    const status = runningStatus.get(videoId);
+    if (status) setStatus(videoId, status).catch(() => {});
+  }, STATUS_HEARTBEAT_MS);
+  return () => clearInterval(timer);
 }
 
 // ---------- Stored subtitle expiry ----------
@@ -473,7 +492,19 @@ async function preprocessingGateOpen(workfile, provider, model) {
   return CP.shouldPreprocess({ workfile, provider, model, enabled }).run;
 }
 
-async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey, model, tabId, lang }) {
+async function translateWorkfile(job) {
+  const videoId = job?.workfile?.video?.id || "unknown-video";
+  const stopHeartbeat = startStatusHeartbeat(videoId);
+  try {
+    await runTranslation(job);
+  } finally {
+    stopHeartbeat();
+    // A run that ended without a final status (an unexpected error) is not kept "alive".
+    runningStatus.delete(videoId);
+  }
+}
+
+async function runTranslation({ workfile: originalWorkfile, provider, apiKey, model, tabId, lang }) {
   const videoId = originalWorkfile?.video?.id || "unknown-video";
   const targetLang = String(lang?.code || "");
   const fingerprint = sourceFingerprint(originalWorkfile);
