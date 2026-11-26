@@ -245,8 +245,24 @@ test("a running status shows its last error translated; missing lines get the hi
   const running = await openPopup({ state: "running", done: 50, total: 120, lastError: "NVIDIA NIM HTTP 503: busy" }, { browserLanguage: "zh-TW" });
   assert.match(running, /⚠️ 最近一次錯誤：NVIDIA NIM 回傳 HTTP 503：busy\n💡 可能原因：供應商的伺服器暫時出問題/);
   const done = await openPopup({ state: "done", done: 120, total: 120, count: 120, untranslated: 3, firstError: "OpenAI GPT HTTP 429: slow down" }, { browserLanguage: "zh-TW" });
-  assert.match(done, /重試後仍有 3 行沒翻成（OpenAI GPT 回傳 HTTP 429：slow down）。請再翻一次，或換一個模型。\n💡 可能原因：短時間內請求太多次，或額度用完了\n👉 怎麼處理：請稍後再試，或換其他模型試試。/);
+  assert.match(done, /重試後仍有 3 行沒翻成（OpenAI GPT 回傳 HTTP 429：slow down），這些行顯示原文。請再翻一次，或換一個模型。\n💡 可能原因：短時間內請求太多次，或額度用完了\n👉 怎麼處理：請稍後再試，或換其他模型試試。/);
   const unknown = await openPopup({ state: "done", done: 120, total: 120, count: 120, untranslated: 3, firstError: null }, { browserLanguage: "zh-TW" });
-  assert.match(unknown, /重試後仍有 3 行沒翻成（未知錯誤）。/);
+  assert.match(unknown, /重試後仍有 3 行沒翻成（未知錯誤），這些行顯示原文。/);
   assert.doesNotMatch(unknown, /💡/);
+});
+
+test("a running status says how many translated lines are already on the video", async () => {
+  const text = await openPopup({ state: "running", done: 150, total: 200, partialLines: 100 }, { browserLanguage: "zh-TW" });
+  assert.match(text, /\n📺 已先把翻好的 100 行放上影片，其餘的行翻好前先顯示原文。/);
+  const before = await openPopup({ state: "running", done: 50, total: 200, partialLines: 0 }, { browserLanguage: "zh-TW" });
+  assert.doesNotMatch(before, /📺/);
+});
+
+test("a failed or stopped run that left partial subtitles on the video says so", async () => {
+  const failed = await openPopup({ state: "error", done: 400, total: 1000, partialLines: 400, error: "x" }, { browserLanguage: "zh-TW" });
+  assert.match(failed, /\n📺 影片上是部分字幕：已翻好的 400 行，其餘顯示原文。\n💾 已存下 400 \/ 1000 行。/);
+  const stopped = await openPopup({ state: "running", done: 400, total: 1000, partialLines: 400 }, { browserLanguage: "zh-TW", ageMs: 4 * 60 * 1000 });
+  assert.match(stopped, /\n📺 影片上是部分字幕：已翻好的 400 行/);
+  const none = await openPopup({ state: "error", done: 0, total: 1000, error: "x" }, { browserLanguage: "zh-TW" });
+  assert.doesNotMatch(none, /📺/);
 });
