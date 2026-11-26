@@ -46,9 +46,10 @@ function makeFetch({ preprocessStatus = 200 } = {}) {
 }
 
 // Runs a real translation and returns every status background.js wrote, in order.
-async function runBackground({ kind = "asr", preprocessStatus = 200 } = {}) {
+async function runBackground({ kind = "asr", preprocessStatus = 200, tabResponses } = {}) {
   const raw = workfileFromJson3("auto-captions-technical.json3", kind);
-  const { ctx, store } = loadBackground({ fetchImpl: makeFetch({ preprocessStatus }) });
+  const { ctx, store, sentToTabs } = loadBackground({ fetchImpl: makeFetch({ preprocessStatus }), tabResponses });
+  runBackground.sentToTabs = sentToTabs;
   const history = [];
   const local = ctx.chrome.storage.local;
   const set = local.set.bind(local);
@@ -158,6 +159,29 @@ test("popup shows the fallback warning with the error codes when preprocessing f
   const { final } = await runBackground({ preprocessStatus: 401 });
   const text = await openPopup(final);
   assert.match(text, /Caption preprocessing failed, the original captions were translated instead \(context_http_401, chunk_http_401\)/);
+});
+
+test("background sends the video id with the subtitles and records whether the tab showed them", async () => {
+  const { raw, final } = await runBackground();
+  const sent = runBackground.sentToTabs[0].message;
+  assert.equal(sent.type, "LOAD_TRANSLATED_JSON");
+  assert.equal(sent.videoId, raw.video.id);
+  assert.equal(final.shownOnVideo, true);
+  assert.match(await openPopup(final), /^✅ Translation finished — subtitles are live on the video\./);
+});
+
+test("popup says the subtitles were saved for the translated video when the tab had moved on", async () => {
+  const { final } = await runBackground({ tabResponses: (m) => ({ ok: true, count: m.workfile.cues.length, shown: false }) });
+  assert.equal(final.state, "done");
+  assert.equal(final.shownOnVideo, false);
+  const text = await openPopup(final);
+  assert.match(text, /^✅ Translation finished\. You moved to another video meanwhile, so the subtitles were saved for the video you translated/);
+  assert.doesNotMatch(text, /live on the video/);
+});
+
+test("a status written before shownOnVideo existed still reads as shown", async () => {
+  const text = await openPopup({ state: "done", done: 3, total: 3, count: 3, untranslated: 0, preprocessing: null });
+  assert.match(text, /^✅ Translation finished — subtitles are live on the video\.\nTranslated lines: 3/);
 });
 
 test("popup shows no preprocessing line when it was bypassed (manual track)", async () => {

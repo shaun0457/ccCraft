@@ -11,7 +11,8 @@ const vm = require("vm");
 const SRC = path.join(__dirname, "..", "..", "src");
 
 function extractFunction(source, name) {
-  const start = source.indexOf("function " + name + "(");
+  // Keeps a leading "async " so extracted async functions can still await.
+  const start = source.search(new RegExp("(async )?function " + name + "\\("));
   if (start < 0) throw new Error("function not found in content.js: " + name);
   const open = source.indexOf("{", source.indexOf(")", start));
   let depth = 0;
