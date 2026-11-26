@@ -102,3 +102,54 @@ test("a status write that fails inside the heartbeat does not break the run", as
   }
   assert.equal(r.store[STATUS].state, "done");
 });
+
+test("a run with no status of its own for 5 minutes is no longer kept alive", async () => {
+  const r = slowRun();
+  let now = Date.now();
+  const RealDate = Date;
+  r.ctx.Date = class extends RealDate { static now() { return now; } };
+  try {
+    for (let i = 0; i < 100 && !r.store[STATUS]; i++) await tick();
+
+    now += 4 * 60 * 1000 + 59 * 1000; // 4:59 without progress: still alive
+    await r.beat();
+    assert.equal(r.store[STATUS].updated_at, now);
+
+    now += 1000; // 5:00: the request is taken as stuck
+    const before = r.store[STATUS].updated_at;
+    await r.beat();
+    now += 60 * 1000;
+    await r.beat();
+    assert.equal(r.store[STATUS].updated_at, before, "no more heartbeat writes");
+  } finally {
+    r.release();
+    await r.run;
+  }
+  assert.equal(r.store[STATUS].state, "done", "a late answer still finishes the run");
+});
+
+test("after a stall the heartbeat resumes when the run reports progress", async () => {
+  const VIDEO2 = "beat-resume";
+  const KEY2 = "ccCraftTranslateStatus:" + VIDEO2;
+  const env = loadBackground({ fetchImpl: async () => chat("") });
+  const intervals = [];
+  env.ctx.setInterval = (fn) => { const h = { fn, cleared: false }; intervals.push(h); return h; };
+  env.ctx.clearInterval = (h) => { h.cleared = true; };
+  let now = 1000000;
+  const RealDate = Date;
+  env.ctx.Date = class extends RealDate { static now() { return now; } };
+  const stop = env.ctx.startStatusHeartbeat(VIDEO2);
+  await env.ctx.setStatus(VIDEO2, { state: "running", done: 1, total: 9 });
+  now += 6 * 60 * 1000;
+  intervals[0].fn();
+  await tick();
+  assert.equal(env.store[KEY2].updated_at, 1000000, "stalled: no write");
+  await env.ctx.setStatus(VIDEO2, { state: "running", done: 2, total: 9 });
+  now += 20 * 1000;
+  intervals[0].fn();
+  await tick();
+  assert.equal(env.store[KEY2].updated_at, now, "writes again after progress");
+  assert.equal(env.store[KEY2].done, 2);
+  stop();
+  assert.ok(intervals[0].cleared);
+});
