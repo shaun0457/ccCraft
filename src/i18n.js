@@ -140,6 +140,7 @@
       errNoCuesArray: "Invalid JSON file: no cues array found.",
       errNoFa: "No filled translation (fa) fields were found in the file.",
       errUnknownMessage: "Unknown message.",
+      errVideoChanged: "The video changed while its subtitles were being read. Go back to the video you want and click Translate again.",
       errCause: "💡 Likely cause: {cause}",
       errFix: "👉 What to do: {fix}",
       cause400: "the request was not accepted (often a wrong model name, or a model that does not take this kind of request)",
@@ -290,6 +291,7 @@
       errNoCuesArray: "JSON 檔格式不對：找不到 cues 陣列。",
       errNoFa: "檔案裡沒有填好的翻譯（fa 欄位）。",
       errUnknownMessage: "不認得的訊息。",
+      errVideoChanged: "讀取字幕的時候影片換了。請回到要翻譯的影片，再按一次翻譯。",
       errCause: "💡 可能原因：{cause}",
       errFix: "👉 怎麼處理：{fix}",
       cause400: "請求格式不被接受（常見是模型名稱不對，或這個模型不支援這種請求）",
@@ -364,7 +366,8 @@
     [/Could not read the subtitle text\./, "errReadCaptions"],
     [/Invalid JSON file: no cues array found\./, "errNoCuesArray"],
     [/No filled translation \(fa\) fields were found in the file\./, "errNoFa"],
-    [/^Unknown message\.$/, "errUnknownMessage"]
+    [/^Unknown message\.$/, "errUnknownMessage"],
+    [/The video changed while its subtitles were being read\. Go back to the video you want and click Translate again\./, "errVideoChanged"]
   ];
 
   // HTTP status (or kind) -> the suffix of its cause/fix strings; null adds no hint.
