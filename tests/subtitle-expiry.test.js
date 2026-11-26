@@ -159,6 +159,34 @@ test("a status without subtitles expires 7 days after its last update", async ()
   assert.equal("ccCraftTranslateStatus:recent" in store, true);
 });
 
+test("a translation checkpoint expires 7 days after its last update, apart from the subtitles", async () => {
+  const { ctx, store } = loadBackground({
+    "ccCraftTranslateCheckpoint:stale": { v: 1, updated_at: NOW - 8 * DAY },
+    "ccCraftTranslateCheckpoint:broken": { v: 1 },
+    // Old subtitles of a video being translated again: they go, the fresh checkpoint stays.
+    ...video("again", { saved_at: NOW - 8 * DAY }),
+    "ccCraftTranslateCheckpoint:again": { v: 1, updated_at: NOW - 1 * DAY }
+  });
+  await ctx.purgeExpiredSubtitles(NOW);
+  assert.equal("ccCraftTranslateCheckpoint:stale" in store, false);
+  assert.equal("ccCraftTranslateCheckpoint:broken" in store, false);
+  assert.deepEqual(keysOf(store, "again"), []);
+  assert.equal("ccCraftTranslateCheckpoint:again" in store, true);
+});
+
+test("a checkpoint updated while the purge runs is kept", async () => {
+  const { ctx, chrome, store } = loadBackground({ "ccCraftTranslateCheckpoint:live": { v: 1, updated_at: NOW - 8 * DAY } });
+  const get = chrome.storage.local.get;
+  let snapshots = 0;
+  chrome.storage.local.get = async (keys) => {
+    const out = await get(keys);
+    if (keys === null && ++snapshots === 1) store["ccCraftTranslateCheckpoint:live"] = { v: 1, updated_at: NOW };
+    return out;
+  };
+  await ctx.purgeExpiredSubtitles(NOW);
+  assert.deepEqual(store["ccCraftTranslateCheckpoint:live"], { v: 1, updated_at: NOW });
+});
+
 test("concurrent purge calls share one run", async () => {
   const { ctx, chrome } = loadBackground(video("a", { saved_at: NOW - 8 * DAY }));
   let reads = 0;
@@ -209,12 +237,19 @@ test("saving subtitles records saved_at and asks for a purge", async () => {
   assert.deepEqual(sent, ["PURGE_EXPIRED_SUBTITLES"]);
 });
 
-test("clearing subtitles removes subtitles, meta and status of the video only", async () => {
-  const env = makeChrome({ ...video("vid1", { saved_at: NOW }, { state: "done" }), ...video("other", { saved_at: NOW }) });
+test("clearing subtitles removes subtitles, meta, status and checkpoint of the video only", async () => {
+  const env = makeChrome({
+    ...video("vid1", { saved_at: NOW }, { state: "done" }),
+    ...video("other", { saved_at: NOW }),
+    "ccCraftTranslateCheckpoint:vid1": { v: 1, updated_at: NOW },
+    "ccCraftTranslateCheckpoint:other": { v: 1, updated_at: NOW }
+  });
   const ctx = loadContent(env.chrome);
   await ctx.clearSubs();
   assert.deepEqual(keysOf(env.store, "vid1"), []);
+  assert.equal("ccCraftTranslateCheckpoint:vid1" in env.store, false, "the next Translate starts over");
   assert.deepEqual(keysOf(env.store, "other"), ["cccraftSubs:", "cccraftSubsMeta:"]);
+  assert.equal("ccCraftTranslateCheckpoint:other" in env.store, true);
 });
 
 test("loading stored subtitles waits for the purge, so expired ones are not shown", async () => {
