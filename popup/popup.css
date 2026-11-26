@@ -16,6 +16,34 @@ header {
   padding: 10px 8px 14px;
   border-bottom: 1px solid #e6e6e6;
   margin-bottom: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+/* Interface language menu, top right of the header. */
+.uiLanguage {
+  flex: none;
+  width: 118px;
+}
+
+.uiLanguage label {
+  font-size: 11px;
+  color: #666;
+  margin: 0 0 3px;
+}
+
+.uiLanguage select {
+  margin: 0;
+  padding: 5px 6px;
+  font-size: 12.5px;
+  border-radius: 7px;
+}
+
+.uiLanguage select:focus-visible {
+  outline: 2px solid #111;
+  outline-offset: 1px;
 }
 
 .title {

@@ -15,6 +15,7 @@
 - **Manual translation** — download the subtitle JSON or a ready-made prompt, translate it yourself in any tool, and load the translated file back.
 - **Background processing** — translation continues even if you close the popup. Progress is shown when you reopen it.
 - **Cross-browser** — works in Chrome (121+) and Firefox (128+).
+- **Interface in English or 繁體中文** — pick the language from the menu at the top right of the popup. It starts in 繁體中文 when the browser language is any Chinese, otherwise English, and the choice is remembered. It covers the popup and the hints on the video; error text passed on from the background or the YouTube page stays in English. The extension's name and description in the browser's extension list follow the browser language.
 
 ## Installation
 
@@ -116,12 +117,14 @@ ccCraft/
 │   ├── background.js       # Service worker: AI translation, model listing, word lookup
 │   ├── caption-preprocessing.js # Auto-caption reconstruction before translation (loaded by background.js)
 │   ├── content.js          # Content script: caption extraction, overlay rendering, learning events
+│   ├── i18n.js             # Interface strings (English, 繁體中文) for the popup and on-video hints
 │   ├── inject-main.js      # MAIN-world script: fetch/XHR hooks for caption URL capture
 │   └── overlay.css         # Subtitle overlay and tooltip styles
 ├── popup/
 │   ├── popup.html          # Extension popup UI
 │   ├── popup.js            # Popup logic: settings, translation control, polling
 │   └── popup.css           # Popup styles
+├── _locales/               # Extension name and description (en, zh_TW)
 ├── tests/                  # Node tests (no dependencies): node --test tests/*.test.js
 └── README.md
 ```

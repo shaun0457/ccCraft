@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
-  "name": "ccCraft",
+  "name": "__MSG_extName__",
   "version": "1.7.5",
-  "description": "AI-crafted YouTube subtitles: extract captions and translate them into any language with Gemini, GPT or NVIDIA NIM.",
+  "description": "__MSG_extDescription__",
+  "default_locale": "en",
   "permissions": [
     "storage",
     "activeTab"
@@ -52,6 +53,7 @@
         "https://m.youtube.com/*"
       ],
       "js": [
+        "src/i18n.js",
         "src/content.js"
       ],
       "css": [

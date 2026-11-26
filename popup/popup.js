@@ -19,6 +19,40 @@ const modelSelect = $("modelSelect");
 const fetchModelsBtn = $("fetchModels");
 const autoTranslateBtn = $("autoTranslate");
 const targetLangSelect = $("targetLangSelect");
+const uiLanguageSelect = $("uiLanguageSelect");
+
+// ---------- Interface language (strings in src/i18n.js) ----------
+
+const UI_LANGUAGE_KEY = "ccCraftUiLanguage";
+let uiLang = CcCraftI18n.uiLanguageOf(null, globalThis.navigator?.language);
+
+function t(key, vars) {
+  return CcCraftI18n.translate(uiLang, key, vars);
+}
+
+// Re-labels the static popup text. Messages already in the status banner keep their language
+// until the next message, except the key-storage warning, which is re-rendered.
+function applyUiLanguage() {
+  document.documentElement.lang = CcCraftI18n.htmlLangOf(uiLang);
+  for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = t(el.dataset.i18n);
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) el.placeholder = t(el.dataset.i18nPlaceholder);
+  uiLanguageSelect.value = uiLang;
+}
+
+async function loadUiLanguage() {
+  const stored = await chrome.storage.local.get(UI_LANGUAGE_KEY);
+  uiLang = CcCraftI18n.uiLanguageOf(stored[UI_LANGUAGE_KEY], globalThis.navigator?.language);
+  applyUiLanguage();
+}
+
+uiLanguageSelect.addEventListener("change", async () => {
+  uiLang = CcCraftI18n.uiLanguageOf(uiLanguageSelect.value, globalThis.navigator?.language);
+  applyUiLanguage();
+  populateModelMenu(providerSelect.value);
+  setStatus(...lastStatus);
+  // The content script listens for this key and switches its on-video hints.
+  await chrome.storage.local.set({ [UI_LANGUAGE_KEY]: uiLang });
+});
 
 const DEFAULT_MODELS = {
   gemini: "gemini-2.5-flash",
@@ -71,20 +105,20 @@ function validateApiKeys(provider, apiKeyValue) {
     .map((k) => k.trim())
     .filter(Boolean);
 
-  if (!keys.length) return `Enter your ${PROVIDER_NAMES[provider]} API key first.`;
+  if (!keys.length) return t("keyMissing", { provider: PROVIDER_NAMES[provider] });
 
   const seen = new Set();
 
   for (const key of keys) {
     if (seen.has(key)) {
-      return `Duplicate key ${maskKey(key)} \u2014 remove the repeated key.`;
+      return t("keyDuplicate", { key: maskKey(key) });
     }
     seen.add(key);
 
     const family = keyFamily(key);
 
     if (family && !(PROVIDER_KEY_FAMILIES[provider] || []).includes(family)) {
-      return `Key ${maskKey(key)} does not look like a ${PROVIDER_NAMES[provider]} key.`;
+      return t("keyWrongProvider", { key: maskKey(key), provider: PROVIDER_NAMES[provider] });
     }
   }
 
@@ -92,7 +126,7 @@ function validateApiKeys(provider, apiKeyValue) {
 
   for (const key of keys.slice(1)) {
     if (keySignature(key) !== firstSig) {
-      return `Keys ${maskKey(keys[0])} and ${maskKey(key)} do not look like keys from the same provider. All keys must belong to one provider.`;
+      return t("keyMixedProviders", { first: maskKey(keys[0]), other: maskKey(key) });
     }
   }
 
@@ -171,13 +205,14 @@ let apiSettings = {
 
 // ---------- Status banner (top of the popup) ----------
 
-// Set while API keys are not being saved (see popup/key-store.js); it is appended to every
-// status message so other messages cannot hide it.
-let keyStoreWarning = "";
+// Set while API keys are not being saved (see popup/key-store.js); the warning is appended to
+// every status message so other messages cannot hide it.
+let keyStoreUnsafe = false;
 let lastStatus = ["", false, false];
 
 function setStatus(text, error = false, busy = false) {
   lastStatus = [text, error, busy];
+  const keyStoreWarning = keyStoreUnsafe ? t("keyStoreWarning") : "";
   const full = [text, keyStoreWarning].filter(Boolean).join("\n\n");
   statusEl.textContent = full;
   statusEl.classList.toggle("show", Boolean(full));
@@ -194,38 +229,38 @@ function clearStatus() {
 function preprocessingMessage(pp) {
   if (!pp) return "";
   if (pp.applied) {
-    let text = `\n🧩 Automatic captions reconstructed before translation: ${pp.raw_cues} → ${pp.cues} lines`;
-    if (pp.chunks_fallback) text += ` (${pp.chunks_fallback} of ${pp.chunks_total} parts kept as original)`;
+    let text = "\n" + t("ppApplied", { raw: pp.raw_cues, cues: pp.cues });
+    if (pp.chunks_fallback) text += t("ppFallbackParts", { fallback: pp.chunks_fallback, total: pp.chunks_total });
     return text;
   }
-  return `\n⚠️ Caption preprocessing failed, the original captions were translated instead (${(pp.warnings || []).join(", ") || pp.reason}).`;
+  return "\n" + t("ppFailed", { reason: (pp.warnings || []).join(", ") || pp.reason });
 }
 
-function runningMessage(status, prefix) {
+function runningMessage(status, prefixKey) {
   if (status.phase === "preprocessing") {
-    const part = status.chunksTotal ? ` (part ${status.chunksDone} of ${status.chunksTotal})` : "";
-    return `⏳ Reconstructing automatic captions before translation${part}...\nYou can close this popup — translation continues in the background.`;
+    const part = status.chunksTotal ? t("runPart", { done: status.chunksDone, total: status.chunksTotal }) : "";
+    return t("runPreprocessing", { part }) + "\n" + t("runBackgroundNote");
   }
   const percent = status.total ? Math.round((status.done / status.total) * 100) : 0;
-  let text = `⏳ ${prefix} ${status.done} of ${status.total} lines translated (${percent}%)`;
+  let text = t("runProgress", { prefix: t(prefixKey), done: status.done, total: status.total, percent });
 
   if (status.retryRound) {
-    text += `\n🔁 Retry round ${status.retryRound} of 2 for ${status.missing} untranslated lines...`;
+    text += "\n" + t("runRetry", { round: status.retryRound, missing: status.missing });
   }
 
   if (status.lastError) {
-    text += `\n⚠️ Last error: ${status.lastError}`;
+    text += "\n" + t("runLastError", { error: status.lastError });
   }
 
-  text += `\nYou can close this popup — translation continues in the background.`;
+  text += "\n" + t("runBackgroundNote");
   return text;
 }
 
 function doneMessage(status) {
-  let text = `✅ Translation finished — subtitles are live on the video.\nTranslated lines: ${status.count}`;
+  let text = t("done", { count: status.count });
 
   if (status.untranslated) {
-    text += `\n⚠️ ${status.untranslated} lines could not be translated even after retries (${status.firstError || "unknown error"}). Translate again or try another model.`;
+    text += "\n" + t("doneUntranslated", { count: status.untranslated, error: status.firstError || t("unknownError") });
   }
 
   text += preprocessingMessage(status.preprocessing);
@@ -236,7 +271,7 @@ async function getActiveYoutubeTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   if (!tab || !tab.url || !tab.url.includes("youtube.com/watch")) {
-    throw new Error("Open a YouTube video first.");
+    throw new Error(t("openYoutube"));
   }
 
   return tab;
@@ -256,22 +291,22 @@ async function sendToTab(message) {
   try {
     return await chrome.tabs.sendMessage(tab.id, message);
   } catch (err) {
-    throw new Error("The extension is not active on this page. Refresh the YouTube page and try again.");
+    throw new Error(t("notActive"));
   }
 }
 
 async function loadTracks({ quiet = false } = {}) {
   try {
-    trackSelect.innerHTML = `<option value="">Loading...</option>`;
+    setPlaceholderOption(trackSelect, t("loading"));
     const res = await sendToTab({ type: "GET_CAPTION_TRACKS" });
 
-    if (!res?.ok) throw new Error(res?.error || "No subtitle tracks found.");
+    if (!res?.ok) throw new Error(res?.error || t("noTracksFound"));
 
     trackSelect.innerHTML = "";
 
     if (!res.tracks.length) {
-      trackSelect.innerHTML = `<option value="">No extractable subtitles</option>`;
-      setStatus("This video has no extractable subtitles.", true);
+      setPlaceholderOption(trackSelect, t("noExtractableOption"));
+      setStatus(t("noExtractable"), true);
       return;
     }
 
@@ -279,8 +314,8 @@ async function loadTracks({ quiet = false } = {}) {
       const option = document.createElement("option");
       option.value = String(track.index);
 
-      const kind = track.kind === "asr" ? "auto" : "manual";
-      const label = track.label || track.languageCode || "Unknown";
+      const kind = track.kind === "asr" ? t("trackAuto") : t("trackManual");
+      const label = track.label || track.languageCode || t("trackUnknown");
       option.textContent = `${label} | ${track.languageCode || "?"} | ${kind}`;
       trackSelect.appendChild(option);
     }
@@ -288,12 +323,21 @@ async function loadTracks({ quiet = false } = {}) {
     trackSelect.value = String(res.preferredIndex ?? 0);
 
     if (!quiet) {
-      setStatus(`Tracks ready. Found: ${res.tracks.length}`);
+      setStatus(t("tracksReady", { count: res.tracks.length }));
     }
   } catch (err) {
     setStatus(err.message, true);
-    trackSelect.innerHTML = `<option value="">Failed to read tracks</option>`;
+    setPlaceholderOption(trackSelect, t("tracksFailedOption"));
   }
+}
+
+// Replaces a menu's options with one empty-valued option (text set with textContent).
+function setPlaceholderOption(select, text) {
+  select.innerHTML = "";
+  const option = document.createElement("option");
+  option.value = "";
+  option.textContent = text;
+  select.appendChild(option);
 }
 
 // ---------- API settings & model menu ----------
@@ -305,11 +349,8 @@ const apiSettingsStore = CcCraftKeyStore.createApiSettingsStore({
   secretStore: CcCraftKeyStore.createIdbStore(globalThis.indexedDB),
   incognito: Boolean(chrome.extension && chrome.extension.inIncognitoContext)
 });
-const KEY_STORE_WARNING =
-  "⚠️ API keys can't be saved in this window (private window, or the browser blocked the extension's storage). " +
-  "A key you enter now works until the popup closes; keys saved earlier are not changed.";
 function warnKeyStore() {
-  keyStoreWarning = KEY_STORE_WARNING;
+  keyStoreUnsafe = true;
   setStatus(...lastStatus);
 }
 
@@ -326,9 +367,7 @@ function populateModelMenu(provider) {
   if (!models.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = apiKeyInput.value.trim()
-      ? "Click “Fetch model list”"
-      : "Enter your API key first";
+    option.textContent = apiKeyInput.value.trim() ? t("modelFetchHint") : t("modelEnterKeyFirst");
     modelSelect.appendChild(option);
     return;
   }
@@ -382,7 +421,7 @@ async function fetchModels({ silent = false } = {}) {
   const apiKey = apiKeyInput.value.trim();
 
   if (!apiKey) {
-    if (!silent) setStatus(`Enter your ${PROVIDER_NAMES[provider]} API key first.`, true);
+    if (!silent) setStatus(t("keyMissing", { provider: PROVIDER_NAMES[provider] }), true);
     return;
   }
 
@@ -395,15 +434,15 @@ async function fetchModels({ silent = false } = {}) {
 
   try {
     fetchModelsBtn.disabled = true;
-    modelSelect.innerHTML = `<option value="">Fetching models...</option>`;
+    setPlaceholderOption(modelSelect, t("modelsFetching"));
 
     if (!silent) {
-      setStatus(`Detecting available ${PROVIDER_NAMES[provider]} models...`, false, true);
+      setStatus(t("modelsDetecting", { provider: PROVIDER_NAMES[provider] }), false, true);
     }
 
     const res = await chrome.runtime.sendMessage({ type: "LIST_MODELS", provider, apiKey });
 
-    if (!res?.ok) throw new Error(res?.error || "Failed to fetch the model list.");
+    if (!res?.ok) throw new Error(res?.error || t("modelsFetchFailed"));
 
     apiSettings.provider = provider;
     apiSettings.keys[provider] = apiKey;
@@ -412,7 +451,7 @@ async function fetchModels({ silent = false } = {}) {
     await persistApiSettings();
 
     if (!silent) {
-      setStatus(`${res.models.length} ${PROVIDER_NAMES[provider]} models detected. Pick one from the menu.`);
+      setStatus(t("modelsDetected", { count: res.models.length, provider: PROVIDER_NAMES[provider] }));
     }
   } catch (err) {
     apiSettings.modelLists[provider] = [];
@@ -484,7 +523,7 @@ function startPolling(videoId) {
     if (!status) return;
 
     if (status.state === "running") {
-      setStatus(runningMessage(status, "Translating..."), false, true);
+      setStatus(runningMessage(status, "prefixTranslating"), false, true);
       return;
     }
 
@@ -498,7 +537,7 @@ function startPolling(videoId) {
     if (status.state === "error") {
       stopPolling();
       autoTranslateBtn.disabled = false;
-      setStatus(`❌ Auto-translate failed:\n${status.error}`, true);
+      setStatus(t("autoFailed", { error: status.error }), true);
     }
   }, 800);
 }
@@ -519,12 +558,12 @@ async function checkExistingTranslateStatus() {
     if (status.state === "running") {
       // If it has not updated for a while, the process was interrupted (e.g. browser closed).
       if (ageMs > 3 * 60 * 1000) {
-        setStatus("⚠️ The previous translation was interrupted (the browser or extension probably restarted). Click Translate again.", true);
+        setStatus(t("interrupted"), true);
         return;
       }
 
       autoTranslateBtn.disabled = true;
-      setStatus(runningMessage(status, "Translation running in the background..."), false, true);
+      setStatus(runningMessage(status, "prefixBackground"), false, true);
       startPolling(videoId);
       return;
     }
@@ -533,7 +572,7 @@ async function checkExistingTranslateStatus() {
     if (ageMs > 30 * 60 * 1000) return;
 
     if (status.state === "error") {
-      setStatus(`❌ The last auto-translate for this video failed:\n${status.error}`, true);
+      setStatus(t("lastFailed", { error: status.error }), true);
     } else if (status.state === "done") {
       setStatus(doneMessage(status));
     }
@@ -549,11 +588,11 @@ autoTranslateBtn.addEventListener("click", async () => {
     const model = modelSelect.value;
 
     if (!apiKey) {
-      throw new Error(`Enter your ${PROVIDER_NAMES[provider]} API key first.`);
+      throw new Error(t("keyMissing", { provider: PROVIDER_NAMES[provider] }));
     }
 
     if (!model) {
-      throw new Error("Fetch the model list and pick a model first.");
+      throw new Error(t("pickModel"));
     }
 
     const keyError = validateApiKeys(provider, apiKey);
@@ -571,32 +610,25 @@ autoTranslateBtn.addEventListener("click", async () => {
     const trackIndex = Number(trackSelect.value || 0);
 
     autoTranslateBtn.disabled = true;
-    setStatus("⏳ Step 1 of 2: extracting subtitles from the player...", false, true);
+    setStatus(t("step1"), false, true);
 
     let res;
     try {
       res = await chrome.tabs.sendMessage(tab.id, { type: "GET_WORKFILE_JSON", trackIndex });
     } catch (_) {
-      throw new Error("The extension is not active on this page. Refresh the YouTube page and try again.");
+      throw new Error(t("notActive"));
     }
 
-    if (!res?.ok) throw new Error(res?.error || "Failed to extract subtitles.");
+    if (!res?.ok) throw new Error(res?.error || t("extractFailed"));
 
     const workfile = res.workfile;
     const lineCount = workfile.cues.length;
 
     // For very long videos, suggest manual translation before attempting AI
     if (lineCount > 200) {
-      setStatus(
-        `⚠️ This video has ${lineCount} subtitle lines. For videos this long, AI translation may be slow or fail.
-You can translate manually: download the JSON or prompt from the "Manual translation" section, translate it yourself, then load it back.
-
-Starting AI translation anyway...`,
-        false,
-        true
-      );
+      setStatus(t("longVideo", { count: lineCount }), false, true);
     } else {
-      setStatus(`⏳ Step 2 of 2: translating ${lineCount} lines to ${lang.label} with ${PROVIDER_NAMES[provider]} (${model})...`, false, true);
+      setStatus(t("step2", { count: lineCount, lang: lang.label, provider: PROVIDER_NAMES[provider], model }), false, true);
     }
 
     const started = await chrome.runtime.sendMessage({
@@ -609,7 +641,7 @@ Starting AI translation anyway...`,
       lang: { code: lang.code, promptName: lang.promptName, dir: lang.dir }
     });
 
-    if (!started?.ok) throw new Error("Could not start the background translation. Reload the extension in chrome://extensions once.");
+    if (!started?.ok) throw new Error(t("startFailed"));
 
     startPolling(workfile.video.id);
   } catch (err) {
@@ -690,11 +722,11 @@ $("refreshTracks").addEventListener("click", () => loadTracks());
 $("downloadJson").addEventListener("click", async () => {
   try {
     const trackIndex = Number(trackSelect.value || 0);
-    setStatus("⏳ Temporarily enabling captions and capturing the real URL...", false, true);
+    setStatus(t("capturingUrl"), false, true);
     const res = await sendToTab({ type: "DOWNLOAD_WORKFILE_JSON", trackIndex });
 
-    if (!res?.ok) throw new Error(res?.error || "Export failed.");
-    setStatus(`JSON downloaded.\nLines: ${res.count}\nLanguage: ${res.language || "unknown"}\nFormat: ${res.format || "?"}`);
+    if (!res?.ok) throw new Error(res?.error || t("exportFailed"));
+    setStatus(t("jsonDownloaded", { count: res.count, language: res.language || t("unknownLanguage"), format: res.format || "?" }));
   } catch (err) {
     setStatus(err.message, true);
   }
@@ -703,11 +735,11 @@ $("downloadJson").addEventListener("click", async () => {
 $("downloadPrompt").addEventListener("click", async () => {
   try {
     const trackIndex = Number(trackSelect.value || 0);
-    setStatus("⏳ Building the ready-made prompt...", false, true);
+    setStatus(t("buildingPrompt"), false, true);
     const res = await sendToTab({ type: "DOWNLOAD_PROMPT_TXT", trackIndex });
 
-    if (!res?.ok) throw new Error(res?.error || "Prompt export failed.");
-    setStatus(`Prompt TXT downloaded.\nLines: ${res.count}\nFormat: ${res.format || "?"}`);
+    if (!res?.ok) throw new Error(res?.error || t("promptExportFailed"));
+    setStatus(t("promptDownloaded", { count: res.count, format: res.format || "?" }));
   } catch (err) {
     setStatus(err.message, true);
   }
@@ -716,19 +748,19 @@ $("downloadPrompt").addEventListener("click", async () => {
 $("loadTranslated").addEventListener("click", async () => {
   try {
     const file = $("fileInput").files?.[0];
-    if (!file) throw new Error("Choose the translated JSON file first.");
+    if (!file) throw new Error(t("chooseFile"));
 
     const text = await file.text();
 
     if (!text.trim()) {
-      throw new Error("The selected file is empty.");
+      throw new Error(t("fileEmpty"));
     }
 
     let workfile;
     try {
       workfile = JSON.parse(text);
     } catch (parseErr) {
-      throw new Error("The JSON file is incomplete or corrupted. The model output must be valid JSON only.");
+      throw new Error(t("fileBadJson"));
     }
 
     const lang = getSelectedLang();
@@ -736,11 +768,11 @@ $("loadTranslated").addEventListener("click", async () => {
     apiSettings.targetLang = lang.code;
     await persistApiSettings();
 
-    setStatus("⏳ Loading translated subtitles...", false, true);
+    setStatus(t("loadingTranslated"), false, true);
     const res = await sendToTab({ type: "LOAD_TRANSLATED_JSON", workfile, subtitleDir: lang.dir });
 
-    if (!res?.ok) throw new Error(res?.error || "Loading failed.");
-    setStatus(`✅ Subtitles are live on the video.\nLines: ${res.count}`);
+    if (!res?.ok) throw new Error(res?.error || t("loadFailed"));
+    setStatus(t("liveOnVideo", { count: res.count }));
   } catch (err) {
     setStatus(err.message, true);
   }
@@ -749,8 +781,8 @@ $("loadTranslated").addEventListener("click", async () => {
 $("clearSubs").addEventListener("click", async () => {
   try {
     const res = await sendToTab({ type: "CLEAR_SUBS" });
-    if (!res?.ok) throw new Error(res?.error || "Clearing failed.");
-    setStatus("Subtitles for this video were cleared.");
+    if (!res?.ok) throw new Error(res?.error || t("clearFailed"));
+    setStatus(t("cleared"));
   } catch (err) {
     setStatus(err.message, true);
   }
@@ -768,6 +800,7 @@ languageLearning.addEventListener("change", () => {
 });
 
 document.addEventListener("DOMContentLoaded", async () => {
+  await loadUiLanguage();
   await loadApiSettings();
   await loadSettings();
   await loadTracks({ quiet: true });
