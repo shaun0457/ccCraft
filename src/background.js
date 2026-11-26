@@ -486,6 +486,7 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
     try {
       res = await chrome.tabs.sendMessage(tabId, {
         type: "LOAD_TRANSLATED_JSON",
+        videoId,
         workfile,
         subtitleDir: lang?.dir === "ltr" ? "ltr" : "rtl"
       });

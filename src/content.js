@@ -397,14 +397,19 @@ function findActiveCue(time) {
   return null;
 }
 
+// YouTube changes videos without a page load. On a new video id, drop the previous video's
+// subtitles at once (loading the stored ones can wait up to SUBTITLE_PURGE_WAIT_MS), then load.
+function followVideoChange() {
+  const currentId = getVideoId();
+  if (currentId === lastVideoId) return;
+  lastVideoId = currentId;
+  faCues = [];
+  loadStoredCues().catch(console.warn);
+}
+
 function renderLoop() {
   try {
-    const currentId = getVideoId();
-
-    if (currentId !== lastVideoId) {
-      lastVideoId = currentId;
-      loadStoredCues().catch(console.warn);
-    }
+    followVideoChange();
 
     const video = document.querySelector("video");
     const overlay = injectOverlay();
@@ -929,16 +934,30 @@ function extractTranslatedCues(workfile) {
   return cues;
 }
 
-async function loadTranslatedJson(workfile, dir) {
+// Saves translated subtitles and shows them. `forVideoId` is the video a background translation was
+// made for; when the tab has moved to another video meanwhile (YouTube changes videos without a page
+// load), they are saved under that video only and not shown here. A manually loaded file passes no
+// id and goes onto the video on screen.
+async function loadTranslatedJson(workfile, dir, forVideoId) {
   const cues = extractTranslatedCues(workfile);
+  const videoId = forVideoId || getVideoId();
+  const shown = videoId === getVideoId();
+  const cueDir = dir === "ltr" ? "ltr" : "rtl";
+  const srcLang = workfile?.source_track?.languageCode || origLang;
+
+  const key = `cccraftSubs:${videoId}`;
+  const metaKey = `cccraftSubsMeta:${videoId}`;
+
+  if (!shown) {
+    await chrome.storage.local.set({ [key]: cues, [metaKey]: { dir: cueDir, srcLang, saved_at: Date.now() } });
+    requestSubtitlePurge();
+    return { ok: true, count: cues.length, shown: false };
+  }
+
   storedCuesGeneration++;
-
   faCues = cues;
-  subsDir = dir === "ltr" ? "ltr" : "rtl";
-
-  const key = `cccraftSubs:${getVideoId()}`;
-  const metaKey = `cccraftSubsMeta:${getVideoId()}`;
-  origLang = workfile?.source_track?.languageCode || origLang;
+  subsDir = cueDir;
+  origLang = srcLang;
 
   const api = await chrome.storage.local.get("ccCraftApiSettings");
   userLang = api?.ccCraftApiSettings?.targetLang || userLang;
@@ -963,7 +982,8 @@ async function loadTranslatedJson(workfile, dir) {
 
   return {
     ok: true,
-    count: cues.length
+    count: cues.length,
+    shown: true
   };
 }
 
@@ -1019,7 +1039,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       if (message.type === "LOAD_TRANSLATED_JSON") {
-        sendResponse(await loadTranslatedJson(message.workfile, message.subtitleDir));
+        sendResponse(await loadTranslatedJson(message.workfile, message.subtitleDir, message.videoId));
         return;
       }
 
