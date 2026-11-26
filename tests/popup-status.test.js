@@ -241,10 +241,12 @@ test("a real background 429 failure reads in Chinese with its cause and what to 
   assert.doesNotMatch(text, /The AI could not/);
 });
 
-test("a running status shows its last error translated, and missing lines without hint lines", async () => {
+test("a running status shows its last error translated; missing lines get the hint lines under the sentence", async () => {
   const running = await openPopup({ state: "running", done: 50, total: 120, lastError: "NVIDIA NIM HTTP 503: busy" }, { browserLanguage: "zh-TW" });
   assert.match(running, /⚠️ 最近一次錯誤：NVIDIA NIM 回傳 HTTP 503：busy\n💡 可能原因：供應商的伺服器暫時出問題/);
-  const done = await openPopup({ state: "done", done: 120, total: 120, count: 120, untranslated: 3, firstError: "NVIDIA NIM HTTP 503: busy" }, { browserLanguage: "zh-TW" });
-  assert.match(done, /重試後仍有 3 行沒翻成（NVIDIA NIM 回傳 HTTP 503：busy）。/);
-  assert.doesNotMatch(done, /💡/);
+  const done = await openPopup({ state: "done", done: 120, total: 120, count: 120, untranslated: 3, firstError: "OpenAI GPT HTTP 429: slow down" }, { browserLanguage: "zh-TW" });
+  assert.match(done, /重試後仍有 3 行沒翻成（OpenAI GPT 回傳 HTTP 429：slow down）。請再翻一次，或換一個模型。\n💡 可能原因：短時間內請求太多次，或額度用完了\n👉 怎麼處理：請稍後再試，或換其他模型試試。/);
+  const unknown = await openPopup({ state: "done", done: 120, total: 120, count: 120, untranslated: 3, firstError: null }, { browserLanguage: "zh-TW" });
+  assert.match(unknown, /重試後仍有 3 行沒翻成（未知錯誤）。/);
+  assert.doesNotMatch(unknown, /💡/);
 });

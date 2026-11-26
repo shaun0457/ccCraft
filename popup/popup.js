@@ -276,7 +276,10 @@ function doneMessage(status) {
   let text = t(status.shownOnVideo === false ? "doneElsewhere" : "done", { count: status.count });
 
   if (status.untranslated) {
-    text += "\n" + t("doneUntranslated", { count: status.untranslated, error: status.firstError ? errorText(status.firstError, false) : t("unknownError") });
+    const short = status.firstError ? errorText(status.firstError, false) : t("unknownError");
+    // The cause and what-to-do lines go under the sentence, not inside its parentheses.
+    const hints = status.firstError ? errorText(status.firstError).slice(short.length) : "";
+    text += "\n" + t("doneUntranslated", { count: status.untranslated, error: short }) + hints;
   }
 
   text += preprocessingMessage(status.preprocessing);
