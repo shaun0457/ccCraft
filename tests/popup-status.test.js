@@ -78,7 +78,7 @@ function fakeElement() {
 }
 
 // Opens the real popup on a YouTube tab whose translate status is `status`; returns the status text.
-async function openPopup(status, { ageMs = 0 } = {}) {
+async function openPopup(status, { ageMs = 0, browserLanguage = "en-US" } = {}) {
   const elements = new Map();
   const onLoad = [];
   const intervals = [];
@@ -111,6 +111,7 @@ async function openPopup(status, { ageMs = 0 } = {}) {
   };
   const ctx = {
     document,
+    navigator: { language: browserLanguage },
     chrome,
     console,
     URL,
@@ -220,4 +221,30 @@ test("a continued run says how many lines were already translated", async () => 
   assert.match(text, /\n↪️ Continuing from the last run: 100 lines were already translated\./);
   const fresh = await openPopup({ state: "running", done: 10, total: 120, resumedFrom: 0 });
   assert.doesNotMatch(fresh, /Continuing/);
+});
+
+// ---------- error text in the interface language ----------
+
+test("a real background 429 failure reads in Chinese with its cause and what to do", async () => {
+  const raw = workfileFromJson3("auto-captions-technical.json3", "manual");
+  const fetchImpl = async () => ({ ok: false, status: 429, json: async () => ({ error: { message: "Rate limit reached" } }) });
+  const { ctx, store } = loadBackground({ fetchImpl });
+  ctx.setTimeout = (fn, ms) => setTimeout(fn, ms >= 10000 ? ms : 0); // skip the retry pauses
+  await ctx.translateWorkfile({ workfile: raw, provider: "gpt", apiKey: "sk-test", model: "gpt-4o-mini", tabId: 1, lang });
+  const status = store["ccCraftTranslateStatus:" + VIDEO];
+  assert.equal(status.state, "error");
+  assert.match(status.error, /^OpenAI GPT HTTP 429: Rate limit reached/, "the background still writes English");
+
+  const text = await openPopup(status, { browserLanguage: "zh-TW" });
+  assert.match(text, /^❌ 這部影片上一次自動翻譯失敗：\nOpenAI GPT 回傳 HTTP 429：Rate limit reached\n\nAI 沒辦法翻譯這部影片，請改用手動翻譯：/);
+  assert.match(text, /\n💡 可能原因：短時間內請求太多次，或額度用完了\n👉 怎麼處理：請稍後再試，或換其他模型試試。/);
+  assert.doesNotMatch(text, /The AI could not/);
+});
+
+test("a running status shows its last error translated, and missing lines without hint lines", async () => {
+  const running = await openPopup({ state: "running", done: 50, total: 120, lastError: "NVIDIA NIM HTTP 503: busy" }, { browserLanguage: "zh-TW" });
+  assert.match(running, /⚠️ 最近一次錯誤：NVIDIA NIM 回傳 HTTP 503：busy\n💡 可能原因：供應商的伺服器暫時出問題/);
+  const done = await openPopup({ state: "done", done: 120, total: 120, count: 120, untranslated: 3, firstError: "NVIDIA NIM HTTP 503: busy" }, { browserLanguage: "zh-TW" });
+  assert.match(done, /重試後仍有 3 行沒翻成（NVIDIA NIM 回傳 HTTP 503：busy）。/);
+  assert.doesNotMatch(done, /💡/);
 });

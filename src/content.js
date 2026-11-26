@@ -29,6 +29,11 @@ function uiText(key, vars) {
   return globalThis.CcCraftI18n ? CcCraftI18n.translate(uiLang, key, vars) : key;
 }
 
+// Background error text in the interface language, without cause lines (it goes into a tooltip).
+function uiErrorText(raw) {
+  return globalThis.CcCraftI18n ? CcCraftI18n.describeError(uiLang, raw, { hints: false }) : String(raw);
+}
+
 function setUiLanguage(saved) {
   if (globalThis.CcCraftI18n) uiLang = CcCraftI18n.uiLanguageOf(saved, globalThis.navigator?.language);
 }
@@ -255,7 +260,7 @@ async function showWordTooltip(span) {
   if (tip.dataset.word !== word || tip.classList.contains("hidden")) return;
 
   if (!res?.ok) {
-    tip.textContent = res?.error || uiText("wordLookupFailed");
+    tip.textContent = res?.error ? uiErrorText(res.error) : uiText("wordLookupFailed");
     return;
   }
 

@@ -133,7 +133,7 @@ function loadContentText(browserLanguage) {
   const ctx = vm.createContext({ navigator: { language: browserLanguage } });
   ctx.globalThis = ctx;
   vm.runInContext(read("src/i18n.js"), ctx);
-  vm.runInContext('let uiLang = "en";\n' + ["uiText", "setUiLanguage"].map((n) => extractFunction(source, n)).join("\n\n"), ctx);
+  vm.runInContext('let uiLang = "en";\n' + ["uiText", "uiErrorText", "setUiLanguage"].map((n) => extractFunction(source, n)).join("\n\n"), ctx);
   return ctx;
 }
 
@@ -146,6 +146,16 @@ test("on-video hints follow the browser language, then the saved choice", () => 
   assert.equal(ctx.uiText("wordLookupFailed"), "Translation failed.");
   ctx.setUiLanguage("bogus");
   assert.equal(ctx.uiText("wordLookupFailed"), "翻譯失敗。");
+});
+
+test("the word-lookup tooltip shows a background error in the interface language, without hint lines", () => {
+  const source = read("src/content.js");
+  assert.match(source, /tip\.textContent = res\?\.error \? uiErrorText\(res\.error\) : uiText\("wordLookupFailed"\);/);
+  const ctx = loadContentText("zh-TW");
+  ctx.setUiLanguage(null);
+  assert.equal(ctx.uiErrorText("Google Translate HTTP 429"), "Google 翻譯回傳 HTTP 429。");
+  ctx.setUiLanguage("en");
+  assert.equal(ctx.uiErrorText("Google Translate HTTP 429"), "Google Translate returned HTTP 429.");
 });
 
 test("content.js switches when the popup saves a new language", () => {

@@ -16,7 +16,7 @@
 - **Background processing** — translation continues even if you close the popup. Progress is shown when you reopen it.
 - **Continue a stopped translation** — translated lines are saved as they arrive. If a run stops (browser or extension restarted, an error, the tab closed), clicking Translate again on the same video sends only the lines still missing. Changing the provider or model keeps the saved lines; changing the target language, or captions that changed, starts over. To start over yourself, clear the video's subtitles first.
 - **Cross-browser** — works in Chrome (121+) and Firefox (128+).
-- **Interface in English or 繁體中文** — pick the language from the menu at the top right of the popup. It starts in 繁體中文 when the browser language is any Chinese, otherwise English, and the choice is remembered. It covers the popup and the hints on the video; error text passed on from the background or the YouTube page stays in English. The extension's name and description in the browser's extension list follow the browser language.
+- **Interface in English or 繁體中文** — pick the language from the menu at the top right of the popup. It starts in 繁體中文 when the browser language is any Chinese, otherwise English, and the choice is remembered. It covers the popup, the hints on the video and the error messages. For an AI provider's HTTP error (429, 401, 5xx and so on) or a timeout, the popup keeps the provider's own message and adds the likely cause and what to do, for example to try again later or switch to another model on 429. The extension's name and description in the browser's extension list follow the browser language.
 
 ## Installation
 

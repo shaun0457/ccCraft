@@ -30,6 +30,12 @@ function t(key, vars) {
   return CcCraftI18n.translate(uiLang, key, vars);
 }
 
+// Error text from the background, content script or YouTube page, in the interface language,
+// with a likely cause and what to do (hints: false for text inside another sentence).
+function errorText(raw, hints = true) {
+  return CcCraftI18n.describeError(uiLang, raw, { hints });
+}
+
 // Re-labels the static popup text. Messages already in the status banner keep their language
 // until the next message, except the key-storage warning, which is re-rendered.
 function applyUiLanguage() {
@@ -253,7 +259,7 @@ function runningMessage(status, prefixKey) {
   }
 
   if (status.lastError) {
-    text += "\n" + t("runLastError", { error: status.lastError });
+    text += "\n" + t("runLastError", { error: errorText(status.lastError) });
   }
 
   text += "\n" + t("runBackgroundNote");
@@ -270,7 +276,7 @@ function doneMessage(status) {
   let text = t(status.shownOnVideo === false ? "doneElsewhere" : "done", { count: status.count });
 
   if (status.untranslated) {
-    text += "\n" + t("doneUntranslated", { count: status.untranslated, error: status.firstError || t("unknownError") });
+    text += "\n" + t("doneUntranslated", { count: status.untranslated, error: status.firstError ? errorText(status.firstError, false) : t("unknownError") });
   }
 
   text += preprocessingMessage(status.preprocessing);
@@ -336,7 +342,7 @@ async function loadTracks({ quiet = false } = {}) {
       setStatus(t("tracksReady", { count: res.tracks.length }));
     }
   } catch (err) {
-    setStatus(err.message, true);
+    setStatus(errorText(err.message), true);
     setPlaceholderOption(trackSelect, t("tracksFailedOption"));
   }
 }
@@ -466,7 +472,7 @@ async function fetchModels({ silent = false } = {}) {
   } catch (err) {
     apiSettings.modelLists[provider] = [];
     populateModelMenu(provider);
-    setStatus(err.message, true);
+    setStatus(errorText(err.message), true);
   } finally {
     fetchModelsBtn.disabled = false;
   }
@@ -547,7 +553,7 @@ function startPolling(videoId) {
     if (status.state === "error") {
       stopPolling();
       autoTranslateBtn.disabled = false;
-      setStatus(t("autoFailed", { error: status.error }) + resumeHint(status), true);
+      setStatus(t("autoFailed", { error: errorText(status.error) }) + resumeHint(status), true);
     }
   }, 800);
 }
@@ -582,7 +588,7 @@ async function checkExistingTranslateStatus() {
     if (ageMs > 30 * 60 * 1000) return;
 
     if (status.state === "error") {
-      setStatus(t("lastFailed", { error: status.error }) + resumeHint(status), true);
+      setStatus(t("lastFailed", { error: errorText(status.error) }) + resumeHint(status), true);
     } else if (status.state === "done") {
       setStatus(doneMessage(status));
     }
@@ -656,7 +662,7 @@ autoTranslateBtn.addEventListener("click", async () => {
     startPolling(workfile.video.id);
   } catch (err) {
     autoTranslateBtn.disabled = false;
-    setStatus(err.message, true);
+    setStatus(errorText(err.message), true);
   }
 });
 
@@ -738,7 +744,7 @@ $("downloadJson").addEventListener("click", async () => {
     if (!res?.ok) throw new Error(res?.error || t("exportFailed"));
     setStatus(t("jsonDownloaded", { count: res.count, language: res.language || t("unknownLanguage"), format: res.format || "?" }));
   } catch (err) {
-    setStatus(err.message, true);
+    setStatus(errorText(err.message), true);
   }
 });
 
@@ -751,7 +757,7 @@ $("downloadPrompt").addEventListener("click", async () => {
     if (!res?.ok) throw new Error(res?.error || t("promptExportFailed"));
     setStatus(t("promptDownloaded", { count: res.count, format: res.format || "?" }));
   } catch (err) {
-    setStatus(err.message, true);
+    setStatus(errorText(err.message), true);
   }
 });
 
@@ -784,7 +790,7 @@ $("loadTranslated").addEventListener("click", async () => {
     if (!res?.ok) throw new Error(res?.error || t("loadFailed"));
     setStatus(t("liveOnVideo", { count: res.count }));
   } catch (err) {
-    setStatus(err.message, true);
+    setStatus(errorText(err.message), true);
   }
 });
 
@@ -794,7 +800,7 @@ $("clearSubs").addEventListener("click", async () => {
     if (!res?.ok) throw new Error(res?.error || t("clearFailed"));
     setStatus(t("cleared"));
   } catch (err) {
-    setStatus(err.message, true);
+    setStatus(errorText(err.message), true);
   }
 });
 
