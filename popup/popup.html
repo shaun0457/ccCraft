@@ -6,20 +6,30 @@
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
+  <!-- Text in elements with data-i18n is replaced from src/i18n.js for the chosen interface language. -->
   <header>
-    <div class="title">ccCraft</div>
-    <div class="sub">AI-crafted subtitles for YouTube</div>
+    <div>
+      <div class="title">ccCraft</div>
+      <div class="sub" data-i18n="sub">AI-crafted subtitles for YouTube</div>
+    </div>
+    <div class="uiLanguage">
+      <label for="uiLanguageSelect" data-i18n="uiLanguageLabel">Language</label>
+      <select id="uiLanguageSelect">
+        <option value="en" lang="en">English</option>
+        <option value="zh-TW" lang="zh-Hant">繁體中文</option>
+      </select>
+    </div>
   </header>
 
   <div id="status"></div>
 
   <section class="step">
-    <div class="stepTitle">Translate</div>
+    <div class="stepTitle" data-i18n="stepTranslate">Translate</div>
 
-    <label for="targetLangSelect">Target language</label>
+    <label for="targetLangSelect" data-i18n="targetLanguage">Target language</label>
     <select id="targetLangSelect"></select>
 
-    <label for="providerSelect">AI provider</label>
+    <label for="providerSelect" data-i18n="aiProvider">AI provider</label>
     <select id="providerSelect">
       <option value="gemini">Google Gemini</option>
       <option value="gpt">OpenAI GPT</option>
@@ -27,95 +37,96 @@
       <option value="qwen">Alibaba Qwen</option>
     </select>
 
-    <label for="apiKeyInput">API key(s) — add more than one, separated by commas, for automatic fallback</label>
-    <input id="apiKeyInput" type="password" dir="ltr" placeholder="key1, key2, ..." />
+    <label for="apiKeyInput" data-i18n="apiKeyLabel">API key(s) — add more than one, separated by commas, for automatic fallback</label>
+    <input id="apiKeyInput" type="password" dir="ltr" placeholder="key1, key2, ..." data-i18n-placeholder="apiKeyPlaceholder" />
 
-    <label for="modelSelect">Model</label>
+    <label for="modelSelect" data-i18n="modelLabel">Model</label>
     <select id="modelSelect">
       <option value="">Enter your API key first</option>
     </select>
-    <button id="fetchModels" class="secondary">Fetch model list</button>
+    <button id="fetchModels" class="secondary" data-i18n="fetchModels">Fetch model list</button>
 
-    <button id="autoTranslate">Translate &amp; show subtitles</button>
-    <p class="hint">
+    <button id="autoTranslate" data-i18n="autoTranslate">Translate &amp; show subtitles</button>
+    <p class="hint" data-i18n="keyHint">
       Your API key is stored only in your browser and sent directly to the selected provider.
     </p>
   </section>
 
   <section class="step">
-    <div class="stepTitle">Subtitle appearance</div>
+    <div class="stepTitle" data-i18n="stepAppearance">Subtitle appearance</div>
 
     <div class="row">
-      <label for="subColor">Subtitle color</label>
+      <label for="subColor" data-i18n="subColor">Subtitle color</label>
       <input id="subColor" type="color" value="#ffffff" />
     </div>
 
-    <label for="fontSize">Font size: <span id="fontSizeValue">24</span>px</label>
+    <label for="fontSize"><span data-i18n="fontSizeLabel">Font size:</span> <span id="fontSizeValue">24</span>px</label>
     <input id="fontSize" type="range" min="14" max="44" value="24" />
 
-    <label for="bottom">Distance from bottom: <span id="bottomValue">12</span>%</label>
+    <label for="bottom"><span data-i18n="bottomLabel">Distance from bottom:</span> <span id="bottomValue">12</span>%</label>
     <input id="bottom" type="range" min="4" max="32" value="12" />
 
     <label class="check">
       <input id="enabled" type="checkbox" checked />
-      Show subtitles on the video
+      <span data-i18n="showSubtitles">Show subtitles on the video</span>
     </label>
   </section>
 
   <section class="step">
-    <div class="stepTitle">Language learning</div>
+    <div class="stepTitle" data-i18n="stepLearning">Language learning</div>
 
     <fieldset class="modes">
-      <legend>Show on the video</legend>
+      <legend data-i18n="showOn">Show on the video</legend>
       <label class="choice">
         <input id="modeTranslation" type="radio" name="subtitleMode" value="translation" />
-        <span>Translation only<small>Only the translated line.</small></span>
+        <span><span data-i18n="modeTranslation">Translation only</span><small data-i18n="modeTranslationHint">Only the translated line.</small></span>
       </label>
       <label class="choice">
         <input id="modeBilingual" type="radio" name="subtitleMode" value="bilingual" />
-        <span>Translation + original<small>Translated line with the original under it.</small></span>
+        <span><span data-i18n="modeBilingual">Translation + original</span><small data-i18n="modeBilingualHint">Translated line with the original under it.</small></span>
       </label>
       <label class="choice">
         <input id="modeOriginal" type="radio" name="subtitleMode" value="original" />
-        <span>Original only<small>The original line, full size. Hover a word for its meaning.</small></span>
+        <span><span data-i18n="modeOriginal">Original only</span><small data-i18n="modeOriginalHint">The original line, full size. Hover a word for its meaning.</small></span>
       </label>
     </fieldset>
 
     <label class="check">
       <input id="languageLearning" type="checkbox" />
-      Word lookup on the original subtitle
+      <span data-i18n="wordLookup">Word lookup on the original subtitle</span>
     </label>
 
-    <p class="hint">
+    <p class="hint" data-i18n="learningHint">
       Hover a word in the original subtitle to see its meaning in your target language, and click the word to hear its pronunciation (powered by Google Translate). The video pauses while you hover.
     </p>
   </section>
 
   <details class="step">
-    <summary>Available subtitle tracks</summary>
+    <summary data-i18n="tracksSummary">Available subtitle tracks</summary>
     <div class="detailsBody">
-      <label for="trackSelect">Source track</label>
+      <label for="trackSelect" data-i18n="sourceTrack">Source track</label>
       <select id="trackSelect">
-        <option value="">Loading...</option>
+        <option value="" data-i18n="loading">Loading...</option>
       </select>
-      <button id="refreshTracks" class="secondary">Refresh tracks</button>
-      <p class="hint">
+      <button id="refreshTracks" class="secondary" data-i18n="refreshTracks">Refresh tracks</button>
+      <p class="hint" data-i18n="tracksHint">
         The real caption URL is captured from the YouTube player itself, not from the raw baseUrl.
       </p>
     </div>
   </details>
 
   <details class="step">
-    <summary>Manual translation</summary>
+    <summary data-i18n="manualSummary">Manual translation</summary>
     <div class="detailsBody">
-      <button id="downloadJson" class="secondary">Download JSON for translation</button>
-      <button id="downloadPrompt" class="secondary">Download ready-made prompt</button>
+      <button id="downloadJson" class="secondary" data-i18n="downloadJson">Download JSON for translation</button>
+      <button id="downloadPrompt" class="secondary" data-i18n="downloadPrompt">Download ready-made prompt</button>
       <input id="fileInput" type="file" accept=".json,application/json" />
-      <button id="loadTranslated">Load translated JSON onto the video</button>
-      <button id="clearSubs" class="danger">Clear subtitles for this video</button>
+      <button id="loadTranslated" data-i18n="loadTranslated">Load translated JSON onto the video</button>
+      <button id="clearSubs" class="danger" data-i18n="clearSubs">Clear subtitles for this video</button>
     </div>
   </details>
 
+  <script src="../src/i18n.js"></script>
   <script src="key-store.js"></script>
   <script src="popup.js"></script>
 </body>

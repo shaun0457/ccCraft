@@ -8,8 +8,12 @@ const vm = require("node:vm");
 const { fakeIndexedDB } = require("./fake-indexeddb.js");
 
 const root = path.join(__dirname, "..", "..");
+const i18nSrc = fs.readFileSync(path.join(root, "src/i18n.js"), "utf8");
 const keyStoreSrc = fs.readFileSync(path.join(root, "popup/key-store.js"), "utf8");
 const popupSrc = fs.readFileSync(path.join(root, "popup/popup.js"), "utf8");
+const popupHtml = fs.readFileSync(path.join(root, "popup/popup.html"), "utf8");
+// Keys of the translatable elements in the real popup.html.
+const htmlKeys = (attr) => [...popupHtml.matchAll(new RegExp(attr + '="(\\w+)"', "g"))].map((m) => m[1]);
 
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
@@ -43,15 +47,23 @@ function fakeElement(id) {
   };
 }
 
-function loadPopup({ stored = {}, idb = fakeIndexedDB(), incognito = false, models = ["model-a"] } = {}) {
+function loadPopup({ stored = {}, idb = fakeIndexedDB(), incognito = false, models = ["model-a"], browserLanguage } = {}) {
   const elements = new Map();
   const docListeners = {};
   const data = structuredClone(stored);
   const messages = [];
+  const textNodes = htmlKeys("data-i18n").map((key) => ({ dataset: { i18n: key }, textContent: "" }));
+  const placeholderNodes = htmlKeys("data-i18n-placeholder").map((key) => ({ dataset: { i18nPlaceholder: key }, placeholder: "" }));
   const document = {
+    documentElement: { lang: "en" },
     getElementById(id) {
       if (!elements.has(id)) elements.set(id, fakeElement(id));
       return elements.get(id);
+    },
+    querySelectorAll(selector) {
+      if (selector === "[data-i18n]") return textNodes;
+      if (selector === "[data-i18n-placeholder]") return placeholderNodes;
+      return [];
     },
     createElement: (tag) => fakeElement(tag),
     addEventListener(type, fn) {
@@ -82,15 +94,21 @@ function loadPopup({ stored = {}, idb = fakeIndexedDB(), incognito = false, mode
     }
   };
   const ctx = { document, chrome, indexedDB: idb, console, setTimeout, clearTimeout, setInterval, clearInterval, URL, Promise };
+  if (browserLanguage !== undefined) ctx.navigator = { language: browserLanguage };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
+  vm.runInContext(i18nSrc, ctx, { filename: "i18n.js" });
   vm.runInContext(keyStoreSrc, ctx, { filename: "key-store.js" });
   vm.runInContext(popupSrc, ctx, { filename: "popup.js" });
   return {
     data,
     idb,
     messages,
+    document,
     el: (id) => document.getElementById(id),
+    // Text of the popup.html element with data-i18n="key" (or its placeholder).
+    text: (key) => textNodes.find((n) => n.dataset.i18n === key)?.textContent,
+    placeholder: (key) => placeholderNodes.find((n) => n.dataset.i18nPlaceholder === key)?.placeholder,
     async open() {
       await Promise.all((docListeners.DOMContentLoaded || []).map((fn) => fn()));
       await tick();

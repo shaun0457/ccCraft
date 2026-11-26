@@ -15,7 +15,8 @@ const VIDEO = "fixture-video";
 const lang = { code: "zh-TW", promptName: "Traditional Chinese (Taiwan)", dir: "ltr" };
 const { fakeIndexedDB } = require("./helpers/fake-indexeddb.js");
 const popupSrc = fs.readFileSync(path.join(__dirname, "..", "popup", "popup.js"), "utf8");
-// popup.html loads key-store.js before popup.js.
+// popup.html loads src/i18n.js and key-store.js before popup.js.
+const i18nSrc = fs.readFileSync(path.join(__dirname, "..", "src", "i18n.js"), "utf8");
 const keyStoreSrc = fs.readFileSync(path.join(__dirname, "..", "popup", "key-store.js"), "utf8");
 const tick = (ms = 30) => new Promise((r) => setTimeout(r, ms));
 
@@ -86,6 +87,8 @@ async function openPopup(status) {
       return elements.get(id);
     },
     createElement: () => fakeElement(),
+    querySelectorAll: () => [],
+    documentElement: {},
     addEventListener: (type, fn) => type === "DOMContentLoaded" && onLoad.push(fn)
   };
   const chrome = {
@@ -119,6 +122,7 @@ async function openPopup(status) {
   };
   ctx.globalThis = ctx;
   vm.createContext(ctx);
+  vm.runInContext(i18nSrc, ctx, { filename: "i18n.js" });
   vm.runInContext(keyStoreSrc, ctx, { filename: "key-store.js" });
   vm.runInContext(popupSrc, ctx, { filename: "popup.js" });
   await Promise.all(onLoad.map((fn) => fn()));

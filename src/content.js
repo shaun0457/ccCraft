@@ -21,6 +21,20 @@ let hoverTimer = null;
 let pausedByLearning = false;
 let currentAudio = null;
 
+// Interface language for the on-video hints; src/i18n.js is loaded before this file (manifest.json).
+// The popup saves the choice under ccCraftUiLanguage.
+let uiLang = "en";
+
+function uiText(key, vars) {
+  return globalThis.CcCraftI18n ? CcCraftI18n.translate(uiLang, key, vars) : key;
+}
+
+function setUiLanguage(saved) {
+  if (globalThis.CcCraftI18n) uiLang = CcCraftI18n.uiLanguageOf(saved, globalThis.navigator?.language);
+}
+
+setUiLanguage(null);
+
 function getVideoId() {
   const url = new URL(location.href);
   return url.searchParams.get("v") || "unknown-video";
@@ -241,7 +255,7 @@ async function showWordTooltip(span) {
   if (tip.dataset.word !== word || tip.classList.contains("hidden")) return;
 
   if (!res?.ok) {
-    tip.textContent = res?.error || "Translation failed.";
+    tip.textContent = res?.error || uiText("wordLookupFailed");
     return;
   }
 
@@ -263,7 +277,7 @@ async function showWordTooltip(span) {
 
   const say = document.createElement("div");
   say.className = "say";
-  say.textContent = "\ud83d\udd0a click the word to hear it";
+  say.textContent = uiText("wordHear");
   tip.appendChild(say);
 }
 
@@ -426,11 +440,17 @@ renderLoop();
 
 async function loadInitialSettings() {
   const result = await chrome.storage.local.get({
-    ccCraftSubtitleSettings: settings
+    ccCraftSubtitleSettings: settings,
+    ccCraftUiLanguage: null
   });
 
+  setUiLanguage(result.ccCraftUiLanguage);
   applySettings(result.ccCraftSubtitleSettings);
 }
+
+chrome.storage.onChanged?.addListener((changes, area) => {
+  if (area === "local" && changes.ccCraftUiLanguage) setUiLanguage(changes.ccCraftUiLanguage.newValue);
+});
 
 // Asks the background to remove expired subtitles (7 days after saving). Waits at most
 // SUBTITLE_PURGE_WAIT_MS so a sleeping or failing background never blocks the overlay.
@@ -937,7 +957,7 @@ async function loadTranslatedJson(workfile, dir) {
 
   // پیام تایید را چند ثانیه روی خود ویدیو نشان بده تا معلوم شود overlay کار می‌کند
   if (overlay) {
-    setOverlayText(overlay, `✓ Subtitles enabled (${cues.length} lines)`, "");
+    setOverlayText(overlay, uiText("flashEnabled", { count: cues.length }), "");
     flashUntil = Date.now() + 3000;
   }
 

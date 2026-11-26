@@ -220,16 +220,22 @@ test("save during the migration's strip step is skipped and cannot erase migrate
 test("popup appends the key warning to every status message", () => {
   const js = fs.readFileSync(path.join(__dirname, "..", "popup/popup.js"), "utf8");
   const code =
-    js.slice(js.indexOf("let keyStoreWarning"), js.indexOf("\n}", js.indexOf("function setStatus")) + 2) +
-    js.slice(js.indexOf("const KEY_STORE_WARNING"), js.indexOf("// Saves run one at a time"));
+    js.slice(js.indexOf("let keyStoreUnsafe"), js.indexOf("\n}", js.indexOf("function setStatus")) + 2) +
+    js.slice(js.indexOf("function warnKeyStore"), js.indexOf("// Saves run one at a time"));
   const classes = new Set();
   const statusEl = {
     textContent: "",
     classList: { toggle: (c, on) => (on ? classes.add(c) : classes.delete(c)) }
   };
   const ctx = { statusEl };
+  ctx.globalThis = ctx;
   require("node:vm").createContext(ctx);
-  require("node:vm").runInContext(code + "\nthis.setStatus = setStatus; this.warnKeyStore = warnKeyStore;", ctx);
+  require("node:vm").runInContext(fs.readFileSync(path.join(__dirname, "..", "src/i18n.js"), "utf8"), ctx);
+  require("node:vm").runInContext(
+    'function t(key, vars) { return CcCraftI18n.translate("en", key, vars); }\n' +
+      code + "\nthis.setStatus = setStatus; this.warnKeyStore = warnKeyStore;",
+    ctx
+  );
   ctx.setStatus("Loading tracks...");
   assert.equal(statusEl.textContent, "Loading tracks...");
   ctx.warnKeyStore();

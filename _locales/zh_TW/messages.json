@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "ccCraft"
+  },
+  "extDescription": {
+    "message": "用 AI 製作 YouTube 字幕：擷取字幕，用 Gemini、GPT 或 NVIDIA NIM 翻成任何語言。"
+  }
+}
