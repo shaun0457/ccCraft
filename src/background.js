@@ -501,6 +501,8 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
       done: cues.length,
       total: cues.length,
       count: res.count,
+      // false when the tab had moved to another video; the subtitles were saved for this one only.
+      shownOnVideo: res.shown !== false,
       untranslated,
       firstError: untranslated ? (chunkErrors[chunkErrors.length - 1] || null) : null,
       preprocessing

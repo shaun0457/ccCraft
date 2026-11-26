@@ -257,7 +257,8 @@ function runningMessage(status, prefixKey) {
 }
 
 function doneMessage(status) {
-  let text = t("done", { count: status.count });
+  // shownOnVideo is false when the tab had moved to another video by the time translation finished.
+  let text = t(status.shownOnVideo === false ? "doneElsewhere" : "done", { count: status.count });
 
   if (status.untranslated) {
     text += "\n" + t("doneUntranslated", { count: status.untranslated, error: status.firstError || t("unknownError") });
