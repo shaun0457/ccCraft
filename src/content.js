@@ -855,9 +855,20 @@ function downloadText(filename, text, type = "text/plain;charset=utf-8") {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+// The video a caption URL belongs to (its "v" parameter), or null when it has none.
+function captionUrlVideoId(urlValue) {
+  try {
+    return new URL(String(urlValue)).searchParams.get("v") || null;
+  } catch (_) {
+    return null;
+  }
+}
+
 // The video is noted when the user clicks, because reading the captions takes up to about 16 s and
-// the tab may move to another video meanwhile (playlist autoplay). If the player then reports
-// another video, its captions are not used for the clicked one.
+// the tab may move to another video meanwhile (playlist autoplay). The page bridge takes whichever
+// caption request the player makes in that time, so the captured URL's own video id is checked:
+// captions of another video are not used for the clicked one. Without an id on either side
+// (no "v" in the page URL or the caption URL) there is nothing to compare and the run goes on.
 async function makeWorkfile(trackIndex) {
   const video = currentVideoInfo();
   const captured = await requestMain("CAPTURE_CAPTION_URL", { trackIndex }, 16000);
@@ -865,8 +876,9 @@ async function makeWorkfile(trackIndex) {
   if (!captured?.ok) {
     throw new Error(captured?.error || "Could not get the caption URL from the YouTube player.");
   }
-  if (captured.videoId && captured.videoId !== video.id) {
-    throw new Error("The video changed while its subtitles were being read. Go back to the video you want and click Translate again.");
+  const captionVideo = captionUrlVideoId(captured.originalUrl);
+  if (video.id !== "unknown-video" && captionVideo && captionVideo !== video.id) {
+    throw new Error("The video changed while its subtitles were being read. Go back to the video you want and try again.");
   }
 
   const cueResult = await readCuesFromUrl(captured);

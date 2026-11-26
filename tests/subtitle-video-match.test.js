@@ -143,27 +143,32 @@ test("background.js tells the tab which video the translation is for", () => {
 
 // ---------- reading the captions (before translation starts) ----------
 
-// makeWorkfile with a fake page bridge: `moveTo` switches the page to another video while the
-// caption URL is captured, and the player reports `playerVideo` (the video it read captions for).
-function loadMakeWorkfile({ moveTo = null, playerVideo = (page) => page.video, moveWhileReading = null } = {}) {
-  const page = { video: "A", titles: { A: "Video A", B: "Video B" } };
+// makeWorkfile with a fake page bridge that behaves like src/inject-main.js: its `videoId` is the
+// one it read when the click arrived, while the caption URL is whichever timedtext request the
+// player makes afterwards, here for the video on screen by then. `moveTo` switches the page while
+// the URL is captured; `captionUrl` overrides the URL.
+function loadMakeWorkfile({ moveTo = null, moveWhileReading = null, pageVideo = "A", captionUrl = null } = {}) {
+  const page = { video: pageVideo, titles: { A: "Video A", B: "Video B" } };
   const ctx = vm.createContext({
     page,
+    URL,
     getVideoId: () => page.video,
     getVideoTitle: () => page.titles[page.video],
     getWatchUrl: () => "https://www.youtube.com/watch?v=" + page.video,
     getVideoDuration: () => 60,
     buildModelPrompt: () => "(prompt)",
     requestMain: async () => {
+      const clicked = page.video;
       if (moveTo) page.video = moveTo;
-      return { ok: true, videoId: playerVideo(page), originalUrl: "u", track: { languageCode: "en", vssId: ".en" } };
+      const url = captionUrl ?? "https://www.youtube.com/api/timedtext?v=" + page.video + "&lang=en&fmt=json3";
+      return { ok: true, videoId: clicked, originalUrl: url, track: { languageCode: "en", vssId: ".en" } };
     },
     readCuesFromUrl: async () => {
       if (moveWhileReading) page.video = moveWhileReading;
       return { format: "json3", cues: [{ id: 1, start: 0, end: 1, source: "hi" }] };
     }
   });
-  vm.runInContext(["currentVideoInfo", "buildWorkfile", "makeWorkfile"].map((n) => extractFunction(source, n)).join("\n\n"), ctx);
+  vm.runInContext(["captionUrlVideoId", "currentVideoInfo", "buildWorkfile", "makeWorkfile"].map((n) => extractFunction(source, n)).join("\n\n"), ctx);
   return ctx;
 }
 
@@ -175,23 +180,25 @@ test("the workfile keeps the video that was on screen when Translate was clicked
   assert.equal(workfile.video.url, "https://www.youtube.com/watch?v=A");
 });
 
-test("captions the player read for another video are not used for the clicked one", async () => {
+test("a caption URL of another video is not used for the clicked one, although the bridge still reports the clicked video", async () => {
   const ctx = loadMakeWorkfile({ moveTo: "B" });
   await assert.rejects(ctx.makeWorkfile(0), /^Error: The video changed while its subtitles were being read\./);
 });
 
-test("a player answer without a video id still works (older bridge)", async () => {
-  const ctx = loadMakeWorkfile({ playerVideo: () => null });
-  const workfile = await ctx.makeWorkfile(0);
-  assert.equal(workfile.video.id, "A");
+test("nothing to compare: no v in the page URL (live replay) or in the caption URL", async () => {
+  const live = loadMakeWorkfile({ pageVideo: "unknown-video", captionUrl: "https://www.youtube.com/api/timedtext?v=REALID&lang=en" });
+  assert.equal((await live.makeWorkfile(0)).video.id, "unknown-video");
+  const noV = loadMakeWorkfile({ captionUrl: "https://www.youtube.com/api/timedtext?lang=en" });
+  assert.equal((await noV.makeWorkfile(0)).video.id, "A");
+  const broken = loadMakeWorkfile({ captionUrl: "not a url" });
+  assert.equal((await broken.makeWorkfile(0)).video.id, "A");
 });
 
-test("the video-changed error reads in Chinese", () => {
+test("the video-changed error makeWorkfile throws reads in Chinese", async () => {
+  const ctx = loadMakeWorkfile({ moveTo: "B" });
+  const err = await ctx.makeWorkfile(0).catch((e) => e);
   const i18n = vm.createContext({});
   i18n.globalThis = i18n;
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "src", "i18n.js"), "utf8"), i18n);
-  assert.equal(
-    i18n.CcCraftI18n.describeError("zh-TW", "The video changed while its subtitles were being read. Go back to the video you want and click Translate again."),
-    "讀取字幕的時候影片換了。請回到要翻譯的影片，再按一次翻譯。"
-  );
+  assert.equal(i18n.CcCraftI18n.describeError("zh-TW", err.message), "讀取字幕的時候影片換了。請回到你要的影片，再試一次。");
 });
