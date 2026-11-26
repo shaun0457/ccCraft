@@ -66,7 +66,7 @@ Use the Firefox build (`ccCraft-*-firefox.zip`), which has all files at the zip 
 - **Font size** — drag the slider to adjust.
 - **Color** — click the color picker to change subtitle text color.
 - **Position** — adjust the bottom margin to move subtitles higher or lower.
-- **Show on the video** (under Language learning) — pick one: **Translation only**, **Translation + original** (the original line under the translation), or **Original only** (the original line at full size, for practising the source language; the video is still translated first, and a line with no original text shows the translation). Word lookup works on the original line, so it needs Translation + original or Original only; turning it on in Translation only switches to Translation + original. A line that has no translation yet keeps YouTube's own captions on screen, except in Original only.
+- **Show on the video** (under Language learning) — pick one: **Translation only**, **Translation + original** (the original line under the translation), or **Original only** (the original line at full size, for practising the source language; the video is still translated first, and a line with no original text shows the translation). Word lookup works on the original line, so it needs Translation + original or Original only; turning it on in Translation only switches to Translation + original. A line that has no translation yet shows its original line at full size in every mode.
 
 ## AI providers
 

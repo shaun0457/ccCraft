@@ -45,12 +45,13 @@ test("original only falls back to the translation when a cue has no original tex
   assert.deepEqual(plain(overlayLines({ text: "只有譯文", orig: "" }, { subtitleMode: "original" })), { main: "只有譯文", orig: "", origOnly: false });
 });
 
-test("a cue with no translation shows nothing outside original only, so YouTube's captions stay", () => {
+test("a cue with no translation shows its original line at full size in every mode", () => {
   const untranslated = { text: "", orig: "Not translated yet." };
-  const none = { main: "", orig: "", origOnly: false };
-  assert.deepEqual(plain(overlayLines(untranslated, { subtitleMode: "translation" })), none);
-  assert.deepEqual(plain(overlayLines(untranslated, { subtitleMode: "bilingual", languageLearning: true })), none);
-  assert.deepEqual(plain(overlayLines(untranslated, { subtitleMode: "original" })), { main: "", orig: untranslated.orig, origOnly: true });
+  const full = { main: "", orig: untranslated.orig, origOnly: true };
+  for (const subtitleMode of ["translation", "bilingual", "original"]) {
+    assert.deepEqual(plain(overlayLines(untranslated, { subtitleMode })), full, subtitleMode);
+  }
+  assert.deepEqual(plain(overlayLines({ text: "", orig: "" }, { subtitleMode: "bilingual" })), { main: "", orig: "", origOnly: false });
 });
 
 // ---------- render wiring (renderCue -> setOverlayText) on a fake DOM ----------
@@ -128,13 +129,16 @@ test("bilingual and translation only render the right lines; the same overlay sw
   assert.deepEqual(shownLines(overlay), { main: cue.text, orig: cue.orig });
 });
 
-test("no cue, or an untranslated cue outside original only, hides the overlay", () => {
-  const renderCue = loadRenderer({ subtitleMode: "bilingual" });
+test("no cue, or a cue with no text at all, hides the overlay; an untranslated cue shows the original full size", () => {
+  const renderCue = loadRenderer({ subtitleMode: "translation" });
   const overlay = node("div");
   assert.equal(renderCue(overlay, null), false);
   assert.equal(overlay.classList.contains("empty"), true);
-  assert.equal(renderCue(overlay, { text: "", orig: "Not translated yet." }), false);
+  assert.equal(renderCue(overlay, { text: "", orig: "" }), false);
   assert.equal(overlay.classList.contains("empty"), true);
+  assert.equal(renderCue(overlay, { text: "", orig: "Not translated yet." }), true);
+  assert.deepEqual(shownLines(overlay), { main: null, orig: "Not translated yet." });
+  assert.equal(overlay.classList.contains("orig-only"), true);
 });
 
 // ---------- popup ----------

@@ -110,8 +110,8 @@ function subtitleModeOf(s) {
 
 // What the overlay shows for a cue: { main, orig, origOnly }. The selected mode always wins.
 // "original" falls back to the translation for a cue that has no original text (an imported
-// file without it). In the other modes a cue with no translation shows nothing, so YouTube's
-// own captions stay visible (as before subtitleMode).
+// file without it). In the other modes a cue that has no translation yet shows its original
+// line at full size instead (the user's choice); a cue with neither shows nothing.
 function overlayLines(cue, s) {
   const none = { main: "", orig: "", origOnly: false };
   if (!cue) return none;
@@ -119,7 +119,7 @@ function overlayLines(cue, s) {
   const orig = cue.orig || "";
   const mode = subtitleModeOf(s);
   if (mode === "original") return orig ? { main: "", orig, origOnly: true } : { main: text, orig: "", origOnly: false };
-  if (!text) return none;
+  if (!text) return orig ? { main: "", orig, origOnly: true } : none;
   return { main: text, orig: mode === "bilingual" ? orig : "", origOnly: false };
 }
 
