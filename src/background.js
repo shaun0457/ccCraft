@@ -440,13 +440,16 @@ function checkpointWorkfile(workfile) {
 }
 
 // Returns a usable checkpoint, or null; one for other captions or another language is removed.
+// A checkpoint without any translated line is not used either: the run starts over, so
+// preprocessing runs again for the current provider and model.
 async function loadCheckpoint(videoId, fingerprint, targetLang) {
   const key = checkpointKey(videoId);
   const stored = (await chrome.storage.local.get(key).catch(() => ({})))?.[key];
   const usable = Boolean(stored) && stored.v === 1 && stored.fingerprint === fingerprint &&
     stored.targetLang === targetLang && Array.isArray(stored.workfile?.cues) && stored.workfile.cues.length > 0 &&
-    Boolean(stored.translations) && typeof stored.translations === "object";
-  if (stored && !usable) await chrome.storage.local.remove(key).catch(() => {});
+    Boolean(stored.translations) && typeof stored.translations === "object" &&
+    Object.values(stored.translations).some((fa) => typeof fa === "string" && fa.trim());
+  if (stored !== undefined && !usable) await chrome.storage.local.remove(key).catch(() => {});
   return usable ? stored : null;
 }
 
@@ -491,9 +494,10 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
   const cues = Array.isArray(workfile?.cues) ? workfile.cues : [];
   const context = workfile?.caption_preprocessing?.profile || null;
   // Preprocessing ran (applied or fell back) only behind its Nemotron gate; an internal error may come before it.
-  // A continued run may use another provider or model, so the gate is checked again for it.
-  const thinkingOff = Boolean(preprocessing) && preprocessing.reason !== "fallback_error" &&
-    (!checkpoint || await preprocessingGateOpen(originalWorkfile, provider, model));
+  // A continued run may use another provider or model than the first one, so its own gate decides.
+  const thinkingOff = checkpoint
+    ? await preprocessingGateOpen(originalWorkfile, provider, model)
+    : Boolean(preprocessing) && preprocessing.reason !== "fallback_error";
   if (!cues.length) {
     await setStatus(videoId, { state: "error", error: "There are no subtitle lines to translate." });
     return;
@@ -561,13 +565,13 @@ async function translateWorkfile({ workfile: originalWorkfile, provider, apiKey,
   };
 
   try {
-    // Saved before translating, so the reconstructed captions are kept even if no chunk finishes.
-    await saveCheckpoint(faById);
+    // The first checkpoint write comes after the first chunk: one without translated lines is never used.
     await setStatus(videoId, { state: "running", done, total: cues.length, resumedFrom });
     await translateBatch(missingCues(), CHUNK_SIZE, 0);
 
-    // If round 1 produced zero translations, the API is broken — show error now
-    if (!faById.size) {
+    // If round 1 added zero translations to the missing lines, the API is broken — show error now.
+    // The checkpoint stays, so a later run can still continue.
+    if (missingCues().length && faById.size === resumedFrom) {
       const reason = chunkErrors[0] || "No translations were received from the model.";
       const manualHint =
         'The AI could not translate this video. Please translate it manually: open the "Manual translation" section, download the JSON or prompt, translate it yourself, then load the translated file back.';

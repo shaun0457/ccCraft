@@ -35,9 +35,11 @@ function manualWorkfile(count = 120, { text = (i) => "line " + i } = {}) {
 }
 
 // Answers every translation request with "<id>| 譯<id>", except ids in `omit` (left out of the reply)
-// and the chunk holding `hangId` (never answers until released). Records the ids of each request.
-function makeFetch({ omit = new Set(), hangId = null } = {}) {
+// and the chunk holding `hangId` (never answers until released). `failStatus` fails every
+// translation request with that HTTP status. Records the ids and body of each request.
+function makeFetch({ omit = new Set(), hangId = null, failStatus = null } = {}) {
   const requests = [];
+  const bodies = [];
   const preprocessRequests = [];
   let release = null;
   const fetchImpl = (url, init) => {
@@ -49,13 +51,15 @@ function makeFetch({ omit = new Set(), hangId = null } = {}) {
     }
     const ids = [...user.matchAll(/^(\d+)\| /gm)].map((m) => Number(m[1]));
     requests.push(ids);
+    bodies.push(body);
+    if (failStatus) return Promise.resolve({ ok: false, status: failStatus, json: async () => ({ error: { message: "quota exceeded" } }) });
     const reply = () => chat(ids.filter((id) => !omit.has(id)).map((id) => id + "| 譯" + id).join("\n"));
     if (hangId != null && ids.includes(hangId) && !release) {
       return new Promise((resolve) => { release = () => resolve(reply()); });
     }
     return Promise.resolve(reply());
   };
-  return { fetchImpl, requests, preprocessRequests, release: () => release && release() };
+  return { fetchImpl, requests, bodies, preprocessRequests, release: () => release && release() };
 }
 
 const range = (from, to) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
@@ -70,8 +74,8 @@ async function interruptedRun({ lang = zhTW, provider = "gpt", model = "gpt-4o-m
   return { store, first: f };
 }
 
-async function secondRun(storage, { lang = zhTW, provider = "gpt", model = "gpt-4o-mini", workfile = manualWorkfile(), tabResponses } = {}) {
-  const f = makeFetch();
+async function secondRun(storage, { lang = zhTW, provider = "gpt", model = "gpt-4o-mini", workfile = manualWorkfile(), tabResponses, fetchOptions } = {}) {
+  const f = makeFetch(fetchOptions);
   const env = load({ fetchImpl: f.fetchImpl, storage: JSON.parse(JSON.stringify(storage)), tabResponses });
   await env.ctx.translateWorkfile({ workfile, provider, apiKey: "sk-test", model, tabId: 1, lang });
   return { ...env, f };
@@ -225,4 +229,73 @@ test("automatic captions: a continued run reuses the reconstructed captions with
   const status = env2.store["ccCraftTranslateStatus:fixture-video"];
   assert.equal(status.state, "done");
   assert.deepEqual(status.preprocessing, ckpt.preprocessing, "the saved summary is reported again");
+});
+
+// ---------- gate round 1: F1, F2, F3 ----------
+
+const NEMOTRON = "nvidia/nemotron-3-ultra-550b-a55b";
+const AUTO = "ccCraftTranslateCheckpoint:fixture-video";
+const thinkingOffIn = (body) => body.chat_template_kwargs?.enable_thinking === false;
+
+// Automatic captions, first run with `provider`/`model`: the second half is never translated and the tab is gone.
+async function autoInterrupted(provider, model) {
+  const raw = workfileFromJson3("auto-captions-technical.json3", "asr");
+  const f = makeFetch({ omit: new Set(range(Math.ceil(raw.cues.length / 2) + 1, raw.cues.length)) });
+  const env = load({ fetchImpl: f.fetchImpl, tabResponses: tabGone });
+  await env.ctx.translateWorkfile({ workfile: raw, provider, apiKey: "k", model, tabId: 1, lang: zhTW });
+  assert.ok(env.store[AUTO], "the first run left a checkpoint");
+  return env.store;
+}
+
+async function autoResume(storage, provider, model) {
+  const f = makeFetch();
+  const env = load({ fetchImpl: f.fetchImpl, storage: JSON.parse(JSON.stringify(storage)) });
+  await env.ctx.translateWorkfile({ workfile: workfileFromJson3("auto-captions-technical.json3", "asr"), provider, apiKey: "k", model, tabId: 1, lang: zhTW });
+  assert.ok(f.requests.length > 0);
+  return { f, store: env.store };
+}
+
+test("F1: a run that translated nothing leaves no checkpoint to continue, so preprocessing runs next time", async () => {
+  const raw = workfileFromJson3("auto-captions-technical.json3", "asr");
+  const first = makeFetch({ failStatus: 401 });
+  const env1 = load({ fetchImpl: first.fetchImpl });
+  await env1.ctx.translateWorkfile({ workfile: raw, provider: "gpt", apiKey: "bad", model: "gpt-4o-mini", tabId: 1, lang: zhTW });
+  assert.equal(env1.store["ccCraftTranslateStatus:fixture-video"].state, "error");
+  assert.equal(Object.keys(env1.store[AUTO]?.translations || {}).length, 0);
+
+  const second = makeFetch();
+  const env2 = load({ fetchImpl: second.fetchImpl, storage: JSON.parse(JSON.stringify(env1.store)) });
+  await env2.ctx.translateWorkfile({ workfile: workfileFromJson3("auto-captions-technical.json3", "asr"), provider: "nvidia", apiKey: "k", model: NEMOTRON, tabId: 1, lang: zhTW });
+  assert.ok(second.preprocessRequests.length > 0, "Nemotron preprocessing runs on the new attempt");
+});
+
+test("F1: a stored checkpoint with no translated line is removed instead of continued", async () => {
+  const { store } = await interruptedRun();
+  const empty = { ...store[KEY], translations: {} };
+  const { f, store: after } = await secondRun({ ...store, [KEY]: empty }, { tabResponses: tabGone });
+  assert.equal(f.requests.flat().length, 120);
+  assert.equal(Object.keys(after[KEY].translations).length, 120, "replaced by the new run's progress");
+});
+
+test("F2: continuing with Nemotron after another provider turns thinking off", async () => {
+  const store = await autoInterrupted("gpt", "gpt-4o-mini");
+  const { f } = await autoResume(store, "nvidia", NEMOTRON);
+  assert.ok(f.bodies.every(thinkingOffIn), "every chunk sent to Nemotron has thinking off");
+});
+
+test("F2: continuing with another provider after Nemotron does not send the Nemotron switch", async () => {
+  const store = await autoInterrupted("nvidia", NEMOTRON);
+  const { f } = await autoResume(store, "gpt", "gpt-4o-mini");
+  assert.ok(f.bodies.every((b) => !("chat_template_kwargs" in b)));
+});
+
+test("F3: continuing while every request fails is an error, and the saved lines stay for later", async () => {
+  const { store } = await interruptedRun();
+  const { f, store: after, sentToTabs } = await secondRun(store, { fetchOptions: { failStatus: 429 } });
+  assert.ok(f.requests.length > 0);
+  assert.equal(after[STATUS].state, "error");
+  assert.match(after[STATUS].error, /HTTP 429/);
+  assert.equal(after[STATUS].done, 100);
+  assert.equal(sentToTabs.length, 0, "nothing incomplete is sent to the tab");
+  assert.equal(Object.keys(after[KEY].translations).length, 100, "the checkpoint is kept");
 });
